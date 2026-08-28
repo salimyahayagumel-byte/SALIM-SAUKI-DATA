@@ -7,7 +7,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     /start command
     """
     text = (
-        "🤖 SALIM SAUKI DATA AI\n\n"
+        "🤖 Dex Analysis Bot\n\n"
         "Assalamu Alaikum.\n"
         "Bot yana aiki lafiya.\n\n"
         "Version: 1.0.0"

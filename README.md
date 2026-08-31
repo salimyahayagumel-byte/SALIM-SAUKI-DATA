@@ -1,6 +1,6 @@
-# SALIM SAUKI DATA AI
+# Dex Analysis Bot
 
-SALIM SAUKI DATA AI is a professional Telegram bot for cryptocurrency token analysis.
+Dex Analysis Bot is a professional Telegram bot for cryptocurrency token analysis.
 
 ## Features
 
@@ -25,7 +25,7 @@ SALIM SAUKI DATA AI is a professional Telegram bot for cryptocurrency token anal
 ## Project Structure
 
 ```
-SALIM-SAUKI-DATA/
+Dex-Analysis-Bot/
 ├── ai/
 ├── cache/
 ├── database/

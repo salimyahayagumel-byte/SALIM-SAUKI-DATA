@@ -27,7 +27,7 @@ async def analyze(
     if len(context.args) == 0:
 
         await update.message.reply_text(
-            "🧠 SALIM SAUKI DATA\n\n"
+            "🧠 DEX ANALYSIS BOT\n\n"
             "Amfani:\n"
             "/analyze <token>\n\n"
             "Misalai:\n"
@@ -300,7 +300,7 @@ async def analyze(
         # =====================================
 
         text = (
-            "🧠 SALIM SAUKI DATA\n"
+            "🧠 DEX ANALYSIS BOT\n"
             "💎 AI TOKEN ANALYSIS V5\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
 

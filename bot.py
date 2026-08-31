@@ -103,7 +103,7 @@ async def start_auto_signals(
     )
 
     print(
-        "💎 SALIM SAUKI DATA — AUTO SIGNAL"
+        "💎 DEX ANALYSIS BOT — AUTO SIGNAL"
     )
 
     print(
@@ -216,7 +216,7 @@ async def run_bot():
     )
 
     print(
-        "🧠 SALIM SAUKI DATA"
+        "🧠 DEX ANALYSIS BOT"
     )
 
     print(

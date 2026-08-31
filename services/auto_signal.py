@@ -1,5 +1,5 @@
 """
-SALIM SAUKI DATA
+DEX ANALYSIS BOT
 AUTO TELEGRAM SIGNAL ENGINE V3
 
 Features:
@@ -150,7 +150,7 @@ class AutoSignalEngine:
         )
 
         print(
-            "💎 SALIM SAUKI DATA — AUTO SIGNAL"
+            "💎 DEX ANALYSIS BOT — AUTO SIGNAL"
         )
 
         print(
@@ -231,7 +231,7 @@ class AutoSignalEngine:
         self.running = False
 
         print(
-            "🛑 SALIM SAUKI DATA — "
+            "🛑 DEX ANALYSIS BOT — "
             "AUTO SIGNAL ENGINE STOPPED"
         )
 
@@ -1030,7 +1030,7 @@ class AutoSignalEngine:
 
         lines = [
 
-            "🧠 SALIM SAUKI DATA",
+            "🧠 DEX ANALYSIS BOT",
 
             "💎 AUTO GEM SIGNAL",
 

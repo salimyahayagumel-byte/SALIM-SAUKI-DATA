@@ -1,5 +1,5 @@
 """
-SALIM SAUKI DATA
+DEX ANALYSIS BOT
 AI Recommendation Engine
 
 Wannan module yana bada recommendation daga bayanan token
@@ -1060,7 +1060,7 @@ if __name__ == "__main__":
 
     print("=" * 70)
     print(
-        "SALIM SAUKI DATA — "
+        "DEX ANALYSIS BOT — "
         "RECOMMENDATION ENGINE"
     )
     print("=" * 70)

@@ -1,5 +1,5 @@
 """
-SALIM SAUKI DATA
+DEX ANALYSIS BOT
 GEM DETECTOR V3
 
 Purpose:
@@ -1164,7 +1164,7 @@ if __name__ == "__main__":
 
     print("=" * 80)
     print(
-        "SALIM SAUKI DATA — GEM DETECTOR V3 TEST"
+        "DEX ANALYSIS BOT — GEM DETECTOR V3 TEST"
     )
     print("=" * 80)
 

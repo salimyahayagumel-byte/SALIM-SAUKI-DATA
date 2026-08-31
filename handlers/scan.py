@@ -79,7 +79,7 @@ def format_signal(token):
     emoji = signal_emoji(signal)
 
     lines = [
-        "🧠 SALIM SAUKI DATA",
+        "🧠 DEX ANALYSIS BOT",
         "💎 EARLY GEM SCANNER",
         "",
         f"{emoji} {signal}",

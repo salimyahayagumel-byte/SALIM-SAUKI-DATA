@@ -1,6 +1,6 @@
 # Dex Analysis Bot
 
-Dex Analysis Bot is a professional Telegram bot for cryptocurrency token analysis.
+Dex Analysis Bot is a professional Telegram bot for cryptocurrency token analysis and Solana market intelligence.
 
 ## Features
 
@@ -12,33 +12,43 @@ Dex Analysis Bot is a professional Telegram bot for cryptocurrency token analysi
 - Holder Analysis
 - Momentum Detection
 - AI Scoring
+- Security Analysis
+- GEM Detection
+- Final Signal Engine
+- Token Recommendation Engine
 - Auto Signal Detection
 - Telegram Auto Alerts
+- Smart Token Ranking
 
-## APIs
+## Security Analysis
 
-- DexScreener
-- BirdEye
-- Helius
-- RugCheck
+The bot performs basic on-chain Solana mint security checks, including:
 
-## Project Structure
+- Mint Authority
+- Freeze Authority
+- Token Supply
+- Token Decimals
+- Mint Initialization
+- Solana RPC Validation
+- RPC Fallback Support
 
-```
-Dex-Analysis-Bot/
-├── ai/
-├── cache/
-├── database/
-├── handlers/
-├── logs/
-├── services/
-├── utils/
-├── bot.py
-├── config.py
-├── requirements.txt
-└── README.md
-```
+> Security analysis is a risk-assessment layer and does not guarantee that a token is completely safe.
 
-## Author
+## Signal Pipeline
 
-Salim Yahaya
+```text
+Token Scanner
+      ↓
+AI Analysis
+      ↓
+GEM Detection
+      ↓
+Security Check
+      ↓
+Final Signal Engine
+      ↓
+Recommendation Engine
+      ↓
+Smart Ranking
+      ↓
+Telegram Auto Signal

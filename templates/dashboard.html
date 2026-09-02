@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>SALIM SAUKI DATA — AI Solana Scanner</title>
+
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+<header class="topbar">
+
+    <div class="brand">
+
+        <div class="brand-icon">
+            🧠
+        </div>
+
+        <div>
+            <h1>SALIM SAUKI DATA</h1>
+            <span>AI SOLANA GEM SCANNER</span>
+        </div>
+
+    </div>
+
+    <div class="status">
+        <span class="status-dot"></span>
+        SCANNER ONLINE
+    </div>
+
+</header>
+
+
+<main class="container">
+
+
+    <!-- =====================================================
+         HERO
+    ====================================================== -->
+
+    <section class="hero">
+
+        <div class="hero-content">
+
+            <p class="eyebrow">
+                REAL-TIME MARKET INTELLIGENCE
+            </p>
+
+            <h2>
+                Find the next
+                <span>Solana GEM</span>
+            </h2>
+
+            <p class="hero-text">
+                AI-powered token analysis using market data,
+                liquidity, momentum, trading activity and
+                security intelligence.
+            </p>
+
+        </div>
+
+
+        <button
+            class="scan-button"
+            id="scanButton"
+            onclick="scanTokens()"
+        >
+            🔎 SCAN SOLANA
+        </button>
+
+    </section>
+
+
+
+    <!-- =====================================================
+         STATS
+    ====================================================== -->
+
+    <section class="stats-grid">
+
+        <div class="stat-card">
+
+            <span>
+                💎 GEMS
+            </span>
+
+            <strong id="gemCount">
+                0
+            </strong>
+
+            <small>
+                Detected signals
+            </small>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <span>
+                🔐 SECURITY
+            </span>
+
+            <strong id="securityCount">
+                0
+            </strong>
+
+            <small>
+                Passed security checks
+            </small>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <span>
+                📊 VOLUME
+            </span>
+
+            <strong id="volume">
+                $0
+            </strong>
+
+            <small>
+                Total 24H volume
+            </small>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <span>
+                🎯 TOP SCORE
+            </span>
+
+            <strong id="topScore">
+                0
+            </strong>
+
+            <small>
+                Highest final score
+            </small>
+
+        </div>
+
+    </section>
+
+
+
+    <!-- =====================================================
+         SECTION HEADER
+    ====================================================== -->
+
+    <section class="section-header">
+
+        <div>
+
+            <p class="eyebrow">
+                AI DISCOVERY
+            </p>
+
+            <h3>
+                Top Solana Gems
+            </h3>
+
+        </div>
+
+
+        <span class="live-label">
+            <span class="live-dot"></span>
+            LIVE
+        </span>
+
+    </section>
+
+
+
+    <!-- =====================================================
+         TOKEN GRID
+    ====================================================== -->
+
+    <section
+        id="tokenGrid"
+        class="token-grid"
+    >
+
+        <div class="empty-state">
+
+            <div class="empty-icon">
+                💎
+            </div>
+
+            <h3>
+                No signals yet
+            </h3>
+
+            <p>
+                Start a Solana scan to discover
+                qualifying GEM candidates.
+            </p>
+
+            <button
+                class="empty-scan-button"
+                onclick="scanTokens()"
+            >
+                🔎 START SCAN
+            </button>
+
+        </div>
+
+    </section>
+
+</main>
+
+
+
+<!-- =========================================================
+     FOOTER
+========================================================== -->
+
+<footer>
+
+    <div>
+        © 2026 SALIM SAUKI DATA
+    </div>
+
+    <div class="footer-right">
+        AI SOLANA INTELLIGENCE
+    </div>
+
+</footer>
+
+
+
+<!-- =========================================================
+     JAVASCRIPT
+========================================================== -->
+
+<script src="/static/js/dashboard.js"></script>
+
+</body>
+</html>

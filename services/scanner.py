@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from services.dexscreener import DexScreener
 from services.security import SecurityChecker
@@ -10,6 +10,10 @@ from ai.recommendation import RecommendationEngine
 
 
 class TokenScanner:
+
+    # =========================================================
+    # SUPPORTED CHAINS
+    # =========================================================
 
     SUPPORTED_CHAINS = {
         "solana": "🟣 Solana",
@@ -29,7 +33,7 @@ class TokenScanner:
     MIN_BUY_RATIO = 0.50
 
     # =========================================================
-    # DISCOVERY
+    # DISCOVERY QUERIES
     # =========================================================
 
     DISCOVERY_QUERIES = [
@@ -46,7 +50,7 @@ class TokenScanner:
     ]
 
     # =========================================================
-    # V7 RANKING PRIORITY
+    # SIGNAL PRIORITY
     # =========================================================
 
     SIGNAL_PRIORITY = {
@@ -57,6 +61,10 @@ class TokenScanner:
         "⛔ NO SIGNAL": 0,
     }
 
+    # =========================================================
+    # STATUS PRIORITY
+    # =========================================================
+
     STATUS_PRIORITY = {
         "STRONG GEM": 5,
         "GEM SIGNAL": 4,
@@ -64,6 +72,10 @@ class TokenScanner:
         "WATCH": 2,
         "REJECT": 0,
     }
+
+    # =========================================================
+    # INIT
+    # =========================================================
 
     def __init__(self):
 
@@ -177,6 +189,10 @@ class TokenScanner:
                 "priceChange"
             ) or {}
 
+            # =================================================
+            # TOKEN ADDRESS
+            # =================================================
+
             address = str(
                 base.get(
                     "address",
@@ -189,9 +205,9 @@ class TokenScanner:
 
                 continue
 
-            # -------------------------------------------------
+            # =================================================
             # TOKEN DEDUPLICATION
-            # -------------------------------------------------
+            # =================================================
 
             if address in seen:
 
@@ -201,9 +217,9 @@ class TokenScanner:
                 address
             )
 
-            # -------------------------------------------------
+            # =================================================
             # MARKET DATA
-            # -------------------------------------------------
+            # =================================================
 
             marketcap = self._number(
                 pair.get(
@@ -259,23 +275,70 @@ class TokenScanner:
             # HARD MARKET FILTER
             # =================================================
 
-            if marketcap < self.MIN_MARKETCAP:
+            if (
+                marketcap
+                < self.MIN_MARKETCAP
+            ):
+
                 continue
 
-            if marketcap > self.MAX_MARKETCAP:
+            if (
+                marketcap
+                > self.MAX_MARKETCAP
+            ):
+
                 continue
 
-            if liquidity_usd < self.MIN_LIQUIDITY:
+            if (
+                liquidity_usd
+                < self.MIN_LIQUIDITY
+            ):
+
                 continue
 
-            if volume_24h < self.MIN_VOLUME_24H:
+            if (
+                volume_24h
+                < self.MIN_VOLUME_24H
+            ):
+
                 continue
 
-            if total_txns < self.MIN_TXNS:
+            if (
+                total_txns
+                < self.MIN_TXNS
+            ):
+
                 continue
 
-            if buy_ratio < self.MIN_BUY_RATIO:
+            if (
+                buy_ratio
+                < self.MIN_BUY_RATIO
+            ):
+
                 continue
+
+            # =================================================
+            # DEXSCREENER INFO
+            #
+            # This contains:
+            #
+            # info.imageUrl
+            # info.header
+            # info.openGraph
+            # info.websites
+            # info.socials
+            # =================================================
+
+            info = pair.get(
+                "info"
+            ) or {}
+
+            if not isinstance(
+                info,
+                dict,
+            ):
+
+                info = {}
 
             # =================================================
             # TOKEN OBJECT
@@ -298,9 +361,10 @@ class TokenScanner:
                 "chain": chain,
 
                 "chain_name":
-                    self.SUPPORTED_CHAINS[
-                        chain
-                    ],
+                    self.SUPPORTED_CHAINS.get(
+                        chain,
+                        "🟣 Solana",
+                    ),
 
                 "price": pair.get(
                     "priceUsd"
@@ -358,6 +422,39 @@ class TokenScanner:
                 "url": pair.get(
                     "url"
                 ),
+
+                # =================================================
+                # SOCIAL / WEBSITE INFORMATION
+                # =================================================
+
+                "info": info,
+
+                "websites":
+                    info.get(
+                        "websites",
+                        [],
+                    ) or [],
+
+                "socials":
+                    info.get(
+                        "socials",
+                        [],
+                    ) or [],
+
+                "image_url":
+                    info.get(
+                        "imageUrl"
+                    ),
+
+                "header_url":
+                    info.get(
+                        "header"
+                    ),
+
+                "open_graph_url":
+                    info.get(
+                        "openGraph"
+                    ),
 
                 "quote_token":
                     pair.get(
@@ -769,7 +866,7 @@ class TokenScanner:
             )
 
             # =================================================
-            # V7 SIGNAL CATEGORY
+            # SIGNAL CATEGORY
             # =================================================
 
             token["signal_priority"] = (
@@ -793,7 +890,7 @@ class TokenScanner:
             )
 
             # =================================================
-            # ADD
+            # ADD RESULT
             # =================================================
 
             results.append(
@@ -801,7 +898,7 @@ class TokenScanner:
             )
 
         # =====================================================
-        # V7 SMART RANKING
+        # SMART RANKING
         # =====================================================
 
         results.sort(
@@ -827,35 +924,45 @@ class TokenScanner:
         strong_count = sum(
             1
             for token in results
-            if token.get("final_signal")
+            if token.get(
+                "final_signal"
+            )
             == "🔥 STRONG GEM"
         )
 
         gem_count = sum(
             1
             for token in results
-            if token.get("final_signal")
+            if token.get(
+                "final_signal"
+            )
             == "🚀 GEM SIGNAL"
         )
 
         early_count = sum(
             1
             for token in results
-            if token.get("final_signal")
+            if token.get(
+                "final_signal"
+            )
             == "👀 EARLY GEM"
         )
 
         watch_count = sum(
             1
             for token in results
-            if token.get("final_signal")
+            if token.get(
+                "final_signal"
+            )
             == "🟡 WATCH"
         )
 
         reject_count = sum(
             1
             for token in results
-            if token.get("final_signal")
+            if token.get(
+                "final_signal"
+            )
             == "⛔ NO SIGNAL"
         )
 
@@ -893,38 +1000,14 @@ class TokenScanner:
         return results
 
     # =========================================================
-    # V7 RANKING KEY
+    # RANKING KEY
     # =========================================================
 
     @classmethod
     def _ranking_key(
         cls,
         token: Dict[str, Any],
-    ):
-
-        signal = token.get(
-            "final_signal",
-            "⛔ NO SIGNAL",
-        )
-
-        status = token.get(
-            "final_status",
-            "REJECT",
-        )
-
-        final_should_signal = bool(
-            token.get(
-                "final_should_signal",
-                False,
-            )
-        )
-
-        is_recommended = bool(
-            token.get(
-                "is_recommended",
-                False,
-            )
-        )
+    ) -> Tuple:
 
         recommendation_score = cls._number(
             token.get(
@@ -961,13 +1044,6 @@ class TokenScanner:
             )
         )
 
-        volume_24h = cls._number(
-            token.get(
-                "volume24h",
-                0,
-            )
-        )
-
         buy_ratio = cls._number(
             token.get(
                 "buy_ratio",
@@ -975,39 +1051,45 @@ class TokenScanner:
             )
         )
 
-        # =====================================================
-        # SIGNAL CATEGORY FIRST
-        # =====================================================
+        liquidity_ratio = cls._number(
+            token.get(
+                "liquidity_ratio",
+                0,
+            )
+        )
+
+        volume_ratio = cls._number(
+            token.get(
+                "volume_ratio",
+                0,
+            )
+        )
+
+        signal_priority = cls._number(
+            token.get(
+                "signal_priority",
+                0,
+            )
+        )
+
+        status_priority = cls._number(
+            token.get(
+                "status_priority",
+                0,
+            )
+        )
 
         return (
-
-            cls.SIGNAL_PRIORITY.get(
-                signal,
-                0,
-            ),
-
-            cls.STATUS_PRIORITY.get(
-                status,
-                0,
-            ),
-
-            final_should_signal,
-
-            is_recommended,
-
+            signal_priority,
+            status_priority,
             recommendation_score,
-
             final_score,
-
             gem_score,
-
             ai_score,
-
             security_score,
-
             buy_ratio,
-
-            volume_24h,
+            liquidity_ratio,
+            volume_ratio,
         )
 
     # =========================================================
@@ -1017,13 +1099,14 @@ class TokenScanner:
     @staticmethod
     def _number(
         value: Any,
+        default: float = 0.0,
     ) -> float:
 
         try:
 
             if value is None:
 
-                return 0.0
+                return default
 
             return float(
                 value
@@ -1034,4 +1117,4 @@ class TokenScanner:
             ValueError,
         ):
 
-            return 0.0
+            return default

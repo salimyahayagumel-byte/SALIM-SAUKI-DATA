@@ -1,6 +1,7 @@
 """
+SALIM SAUKI DATA
 DEX ANALYSIS BOT
-AUTO TELEGRAM SIGNAL ENGINE V3
+AUTO TELEGRAM SIGNAL ENGINE V4
 
 Features:
     - Automatic Solana token scanning
@@ -13,6 +14,11 @@ Features:
     - Cooldown protection
     - Signal history
     - Telegram delivery
+    - DexScreener socials
+    - X / Twitter detection
+    - Telegram detection
+    - Website detection
+    - Token tools
     - Clean signal formatting
 
 NOT FINANCIAL ADVICE.
@@ -21,6 +27,7 @@ NOT FINANCIAL ADVICE.
 import asyncio
 import time
 from typing import Any, Dict, List, Set, Tuple
+from urllib.parse import quote
 
 from services.scanner import TokenScanner
 
@@ -35,19 +42,14 @@ class AutoSignalEngine:
 
     DEFAULT_COOLDOWN = 3600
 
-    # Maximum number of signals allowed from one scan.
     DEFAULT_MAX_SIGNALS_PER_SCAN = 3
 
-    # Minimum recommendation score.
     MIN_RECOMMENDATION_SCORE = 75
 
-    # Minimum final score.
     MIN_FINAL_SCORE = 75
 
-    # Minimum security score.
     MIN_SECURITY_SCORE = 90
 
-    # Keep only recent history in memory.
     MAX_HISTORY = 5000
 
     # =========================================================
@@ -101,8 +103,6 @@ class AutoSignalEngine:
 
         # =====================================================
         # SIGNAL HISTORY
-        #
-        # address -> timestamp
         # =====================================================
 
         self.signal_history: Dict[str, float] = {}
@@ -129,6 +129,15 @@ class AutoSignalEngine:
 
         self.telegram_errors = 0
 
+        # =====================================================
+        # SOCIAL ENRICHMENT CACHE
+        # =====================================================
+
+        self.social_cache: Dict[
+            str,
+            Dict[str, Any]
+        ] = {}
+
     # =========================================================
     # START
     # =========================================================
@@ -150,7 +159,7 @@ class AutoSignalEngine:
         )
 
         print(
-            "💎 DEX ANALYSIS BOT — AUTO SIGNAL"
+            "💎 SALIM SAUKI DATA — AUTO SIGNAL"
         )
 
         print(
@@ -175,7 +184,11 @@ class AutoSignalEngine:
         )
 
         print(
-            "🚀 AUTO SIGNAL ENGINE V3 STARTED"
+            "🌐 DexScreener socials: ENABLED"
+        )
+
+        print(
+            "🚀 AUTO SIGNAL ENGINE V4 STARTED"
         )
 
         while self.running:
@@ -231,7 +244,7 @@ class AutoSignalEngine:
         self.running = False
 
         print(
-            "🛑 DEX ANALYSIS BOT — "
+            "🛑 SALIM SAUKI DATA — "
             "AUTO SIGNAL ENGINE STOPPED"
         )
 
@@ -256,6 +269,11 @@ class AutoSignalEngine:
         print(
             f"🚫 Filtered: "
             f"{self.filtered_out}"
+        )
+
+        print(
+            f"❌ Telegram errors: "
+            f"{self.telegram_errors}"
         )
 
     # =========================================================
@@ -471,6 +489,27 @@ class AutoSignalEngine:
                 f"AI={self._int(token.get('ai_score'))}",
             )
 
+            # -------------------------------------------------
+            # DEXSCREENER SOCIAL ENRICHMENT
+            # -------------------------------------------------
+
+            try:
+
+                await self._enrich_socials(
+                    token
+                )
+
+            except Exception as exc:
+
+                print(
+                    f"⚠️ Social enrichment failed "
+                    f"for ${symbol}: {exc}"
+                )
+
+            # -------------------------------------------------
+            # FORMAT
+            # -------------------------------------------------
+
             message = self.format_signal(
                 token
             )
@@ -480,6 +519,7 @@ class AutoSignalEngine:
                 await self.bot.send_message(
                     chat_id=self.chat_id,
                     text=message,
+                    parse_mode="HTML",
                     disable_web_page_preview=True,
                 )
 
@@ -527,6 +567,427 @@ class AutoSignalEngine:
         print(
             f"📤 Signals sent this scan: "
             f"{sent_this_scan}"
+        )
+
+    # =========================================================
+    # DEXSCREENER SOCIAL ENRICHMENT
+    # =========================================================
+
+    async def _enrich_socials(
+        self,
+        token: Dict[str, Any],
+    ) -> Dict[str, Any]:
+
+        address = str(
+            token.get(
+                "address",
+                "",
+            )
+            or ""
+        ).strip()
+
+        if not address:
+
+            return token
+
+        # -----------------------------------------------------
+        # Already available?
+        # -----------------------------------------------------
+
+        existing_info = token.get(
+            "info"
+        )
+
+        if isinstance(
+            existing_info,
+            dict,
+        ):
+
+            self._extract_socials(
+                token,
+                existing_info,
+            )
+
+            return token
+
+        # -----------------------------------------------------
+        # CACHE
+        # -----------------------------------------------------
+
+        cached = self.social_cache.get(
+            address
+        )
+
+        if isinstance(
+            cached,
+            dict,
+        ):
+
+            self._extract_socials(
+                token,
+                cached,
+            )
+
+            return token
+
+        # -----------------------------------------------------
+        # FETCH REAL PAIR DATA
+        # -----------------------------------------------------
+
+        try:
+
+            pairs = await self.scanner.dex.tokens(
+                [address]
+            )
+
+        except Exception as exc:
+
+            print(
+                f"⚠️ DexScreener social lookup "
+                f"failed for {address}: {exc}"
+            )
+
+            return token
+
+        if not pairs:
+
+            return token
+
+        # -----------------------------------------------------
+        # Find best Solana pair
+        # -----------------------------------------------------
+
+        selected_pair = None
+
+        for pair in pairs:
+
+            if not isinstance(
+                pair,
+                dict,
+            ):
+
+                continue
+
+            chain = str(
+                pair.get(
+                    "chainId",
+                    "",
+                )
+                or ""
+            ).lower()
+
+            if chain != "solana":
+
+                continue
+
+            selected_pair = pair
+
+            break
+
+        if not selected_pair:
+
+            selected_pair = pairs[0]
+
+        info = selected_pair.get(
+            "info"
+        )
+
+        if not isinstance(
+            info,
+            dict,
+        ):
+
+            return token
+
+        # -----------------------------------------------------
+        # Save
+        # -----------------------------------------------------
+
+        token["info"] = info
+
+        self.social_cache[
+            address
+        ] = info
+
+        self._extract_socials(
+            token,
+            info,
+        )
+
+        return token
+
+    # =========================================================
+    # EXTRACT SOCIALS
+    # =========================================================
+
+    @classmethod
+    def _extract_socials(
+        cls,
+        token: Dict[str, Any],
+        info: Dict[str, Any],
+    ):
+
+        if not isinstance(
+            info,
+            dict,
+        ):
+
+            return
+
+        websites = []
+
+        socials = []
+
+        # =====================================================
+        # WEBSITES
+        # =====================================================
+
+        raw_websites = info.get(
+            "websites",
+            [],
+        )
+
+        if isinstance(
+            raw_websites,
+            list,
+        ):
+
+            for item in raw_websites:
+
+                if not isinstance(
+                    item,
+                    dict,
+                ):
+
+                    continue
+
+                url = str(
+                    item.get(
+                        "url",
+                        "",
+                    )
+                    or ""
+                ).strip()
+
+                label = str(
+                    item.get(
+                        "label",
+                        "Website",
+                    )
+                    or "Website"
+                ).strip()
+
+                if not url:
+
+                    continue
+
+                if not cls._valid_social_url(
+                    url
+                ):
+
+                    continue
+
+                websites.append(
+                    {
+                        "url": url,
+                        "label": label,
+                    }
+                )
+
+        # =====================================================
+        # SOCIALS
+        # =====================================================
+
+        raw_socials = info.get(
+            "socials",
+            [],
+        )
+
+        if isinstance(
+            raw_socials,
+            list,
+        ):
+
+            for item in raw_socials:
+
+                if not isinstance(
+                    item,
+                    dict,
+                ):
+
+                    continue
+
+                url = str(
+                    item.get(
+                        "url",
+                        "",
+                    )
+                    or ""
+                ).strip()
+
+                social_type = str(
+                    item.get(
+                        "type",
+                        "",
+                    )
+                    or ""
+                ).lower().strip()
+
+                if not url:
+
+                    continue
+
+                if not cls._valid_social_url(
+                    url
+                ):
+
+                    continue
+
+                socials.append(
+                    {
+                        "url": url,
+                        "type": social_type,
+                    }
+                )
+
+        token["websites"] = websites
+
+        token["socials"] = socials
+
+        token["twitter_url"] = cls._find_social(
+            socials,
+            (
+                "twitter",
+                "x",
+            ),
+        )
+
+        token["telegram_url"] = cls._find_social(
+            socials,
+            (
+                "telegram",
+                "tg",
+            ),
+        )
+
+        token["discord_url"] = cls._find_social(
+            socials,
+            (
+                "discord",
+            ),
+        )
+
+        token["website_url"] = (
+            websites[0]["url"]
+            if websites
+            else ""
+        )
+
+    # =========================================================
+    # FIND SOCIAL
+    # =========================================================
+
+    @staticmethod
+    def _find_social(
+        socials: List[Dict[str, Any]],
+        types: Tuple[str, ...],
+    ) -> str:
+
+        for item in socials:
+
+            social_type = str(
+                item.get(
+                    "type",
+                    "",
+                )
+                or ""
+            ).lower().strip()
+
+            url = str(
+                item.get(
+                    "url",
+                    "",
+                )
+                or ""
+            ).strip()
+
+            if not url:
+
+                continue
+
+            if social_type in types:
+
+                return url
+
+            # Extra protection for X/Twitter
+            if (
+                "twitter.com/" in url.lower()
+                or "x.com/" in url.lower()
+            ):
+
+                if (
+                    "twitter" in types
+                    or "x" in types
+                ):
+
+                    return url
+
+            # Extra protection for Telegram
+            if "t.me/" in url.lower():
+
+                if (
+                    "telegram" in types
+                    or "tg" in types
+                ):
+
+                    return url
+
+        return ""
+
+    # =========================================================
+    # URL VALIDATION
+    # =========================================================
+
+    @staticmethod
+    def _valid_social_url(
+        url: str,
+    ) -> bool:
+
+        value = str(
+            url or ""
+        ).strip()
+
+        if not value:
+
+            return False
+
+        # Never allow image URLs into socials.
+        blocked = (
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".webp",
+            "/cms/images/",
+            "/token-images/",
+        )
+
+        lower = value.lower()
+
+        if any(
+            item in lower
+            for item in blocked
+        ):
+
+            return False
+
+        return (
+            lower.startswith(
+                "http://"
+            )
+            or lower.startswith(
+                "https://"
+            )
         )
 
     # =========================================================
@@ -690,17 +1151,6 @@ class AutoSignalEngine:
                 0,
             )
         )
-
-        # Highest priority:
-        #
-        # 1. recommendation
-        # 2. final score
-        # 3. gem score
-        # 4. AI score
-        # 5. security
-        # 6. buy pressure
-        # 7. liquidity quality
-        # 8. volume activity
 
         return (
             recommendation_score,
@@ -876,135 +1326,81 @@ class AutoSignalEngine:
         token: Dict[str, Any],
     ) -> str:
 
-        symbol = str(
-            token.get(
-                "symbol",
-                "N/A",
-            )
-            or "N/A"
+        symbol = cls._escape_html(
+            str(token.get("symbol", "N/A") or "N/A")
         )
 
-        name = str(
-            token.get(
-                "name",
-                "Unknown",
-            )
-            or "Unknown"
+        name = cls._escape_html(
+            str(token.get("name", "Unknown") or "Unknown")
         )
 
-        chain_name = str(
-            token.get(
-                "chain_name",
-                "🟣 Solana",
-            )
-            or "🟣 Solana"
+        chain_name = cls._escape_html(
+            str(token.get("chain_name", "🟣 Solana") or "🟣 Solana")
         )
 
-        final_score = cls._int(
-            token.get(
-                "final_score",
-                0,
-            )
-        )
+        final_score = cls._int(token.get("final_score", 0))
+        ai_score = cls._int(token.get("ai_score", 0))
+        gem_score = cls._int(token.get("gem_score", 0))
+        security_score = cls._int(token.get("security_score", 0))
 
-        ai_score = cls._int(
-            token.get(
-                "ai_score",
-                0,
+        recommendation = cls._escape_html(
+            str(
+                token.get(
+                    "recommendation",
+                    "🚀 BUY",
+                )
+                or "🚀 BUY"
             )
-        )
-
-        gem_score = cls._int(
-            token.get(
-                "gem_score",
-                0,
-            )
-        )
-
-        security_score = cls._int(
-            token.get(
-                "security_score",
-                0,
-            )
-        )
-
-        recommendation = str(
-            token.get(
-                "recommendation",
-                "🚀 BUY",
-            )
-            or "🚀 BUY"
         )
 
         recommendation_score = cls._int(
-            token.get(
-                "recommendation_score",
-                0,
-            )
+            token.get("recommendation_score", 0)
         )
 
         confidence = cls._int(
             token.get(
                 "recommendation_confidence",
-                token.get(
-                    "confidence",
-                    0,
-                ),
+                token.get("confidence", 0),
             )
         )
 
-        risk = str(
-            token.get(
-                "recommendation_risk",
+        risk = cls._escape_html(
+            str(
                 token.get(
-                    "risk_level",
-                    "⚪ UNKNOWN",
-                ),
+                    "recommendation_risk",
+                    token.get("risk_level", "⚪ UNKNOWN"),
+                )
+                or "⚪ UNKNOWN"
             )
-            or "⚪ UNKNOWN"
         )
 
         marketcap = cls._number(
-            token.get(
-                "marketcap",
-                0,
-            )
+            token.get("marketcap", 0)
         )
 
         liquidity = cls._number(
-            token.get(
-                "liquidity",
-                0,
-            )
+            token.get("liquidity", 0)
         )
 
         volume = cls._number(
-            token.get(
-                "volume24h",
-                0,
-            )
+            token.get("volume24h", 0)
         )
 
         total_txns = cls._int(
-            token.get(
-                "total_txns",
-                0,
-            )
+            token.get("total_txns", 0)
         )
 
         buy_ratio = cls._number(
-            token.get(
-                "buy_ratio",
-                0,
-            )
+            token.get("buy_ratio", 0)
         )
 
         price_change = cls._number(
-            token.get(
-                "price_change_24h",
-                0,
-            )
+            token.get("price_change_24h", 0)
         )
+
+        address = str(
+            token.get("address", "") or ""
+        ).strip()
 
         positive = token.get(
             "recommendation_positive_reasons",
@@ -1016,137 +1412,258 @@ class AutoSignalEngine:
             [],
         ) or []
 
-        address = str(
-            token.get(
-                "address",
-                "",
-            )
-            or ""
+        # =====================================================
+        # SOCIALS
+        # =====================================================
+
+        twitter_url = str(
+            token.get("twitter_url", "") or ""
+        ).strip()
+
+        telegram_url = str(
+            token.get("telegram_url", "") or ""
+        ).strip()
+
+        website_url = str(
+            token.get("website_url", "") or ""
+        ).strip()
+
+        # =====================================================
+        # TOKEN TOOLS
+        # =====================================================
+
+        dex_url = str(
+            token.get("url", "") or ""
+        ).strip()
+
+        solscan_url = (
+            f"https://solscan.io/token/"
+            f"{quote(address, safe='')}"
+            if address
+            else ""
+        )
+
+        gecko_url = (
+            f"https://www.geckoterminal.com/"
+            f"solana/tokens/"
+            f"{quote(address, safe='')}"
+            if address
+            else ""
+        )
+
+        gmgn_url = (
+            f"https://gmgn.ai/sol/token/"
+            f"{quote(address, safe='')}"
+            if address
+            else ""
         )
 
         # =====================================================
-        # MESSAGE
+        # COMPACT MESSAGE
         # =====================================================
 
         lines = [
 
-            "🧠 DEX ANALYSIS BOT",
-
-            "💎 AUTO GEM SIGNAL",
-
-            "",
-
-            f"🚀 {recommendation}",
+            # TOKEN HEADER
+            f"🪙 <b>${symbol}</b> — <b>{name}</b>",
+            f"└ {chain_name}",
 
             "",
 
-            f"🪙 ${symbol} — {name}",
-
-            f"⛓️ Chain: {chain_name}",
-
-            "",
-
-            "📊 MARKET DATA",
-
-            f"💰 MC: ${marketcap:,.0f}",
-
-            f"💧 LIQ: ${liquidity:,.0f}",
-
-            f"📈 VOL 24H: ${volume:,.0f}",
-
-            f"🔄 TXNS: {total_txns}",
-
-            f"🟢 BUY RATIO: "
-            f"{buy_ratio * 100:.1f}%",
-
-            f"📊 24H CHANGE: "
-            f"{price_change:.2f}%",
+            # MARKET
+            "<b>📊 Stats</b>",
+            f"├ USD  <b>${marketcap:,.0f}</b>",
+            f"├ LP   <b>${liquidity:,.0f}</b>",
+            f"├ Vol  <b>${volume:,.0f}</b>",
+            f"├ TXNS <b>{total_txns:,}</b>",
+            f"└ BUY  <b>{buy_ratio * 100:.1f}%</b> • "
+            f"<b>{price_change:+.2f}%</b>",
 
             "",
 
-            "🧠 AI ANALYSIS",
+            # AI / SIGNAL
+            f"🧠 AI <b>{ai_score}</b> • "
+            f"💎 GEM <b>{gem_score}</b> • "
+            f"🔐 SEC <b>{security_score}</b> • "
+            f"🎯 FINAL <b>{final_score}</b>",
 
-            f"🤖 AI: {ai_score}/100",
-
-            f"💎 GEM: {gem_score}/100",
-
-            f"🔐 SECURITY: "
-            f"{security_score}/100",
-
-            f"🎯 FINAL: "
-            f"{final_score}/100",
-
-            "",
-
-            "🤖 RECOMMENDATION",
-
-            f"{recommendation}",
-
-            f"📊 Score: "
-            f"{recommendation_score}/100",
-
-            f"🎯 Confidence: "
-            f"{confidence}%",
-
-            f"🛡 Risk: {risk}",
+            f"{recommendation} • "
+            f"Score <b>{recommendation_score}</b> • "
+            f"Conf <b>{confidence}%</b> • "
+            f"{risk}",
         ]
 
         # =====================================================
-        # POSITIVE FACTORS
+        # POSITIVE FACTORS — COMPACT
         # =====================================================
 
         if positive:
 
-            lines.extend(
-                [
-                    "",
-                    "✅ POSITIVE FACTORS",
-                ]
-            )
+            clean_positive = []
 
-            for reason in positive[:8]:
+            for reason in positive[:6]:
 
-                lines.append(
-                    f"• {reason}"
+                value = cls._escape_html(
+                    str(reason or "").strip()
+                )
+
+                if value:
+                    clean_positive.append(value)
+
+            if clean_positive:
+
+                lines.extend(
+                    [
+                        "",
+                        "✅ <b>Strengths:</b> "
+                        + " • ".join(clean_positive),
+                    ]
                 )
 
         # =====================================================
-        # FINAL REASONS
+        # FINAL REASONS — COMPACT
         # =====================================================
 
         if final_reasons:
 
-            lines.extend(
-                [
-                    "",
-                    "📋 FINAL REASONS",
-                ]
-            )
+            clean_reasons = []
 
-            for reason in final_reasons[:8]:
+            for reason in final_reasons[:5]:
+
+                value = cls._escape_html(
+                    str(reason or "").strip()
+                )
+
+                if value:
+                    clean_reasons.append(value)
+
+            if clean_reasons:
 
                 lines.append(
-                    f"• {reason}"
+                    "📋 <b>Signal:</b> "
+                    + " • ".join(clean_reasons)
                 )
 
         # =====================================================
-        # CONTRACT
+        # SOCIALS — ONE LINE
         # =====================================================
 
-        lines.extend(
-            [
-                "",
-                "📄 CONTRACT ADDRESS",
-                address,
-                "",
-                "━━━━━━━━━━━━━━━━━━━━",
-                "⚠️ Wannan signal ba guarantee bane.",
-                "DYOR kafin kowane trade.",
-            ]
+        social_lines = []
+
+        if twitter_url:
+
+            social_lines.append(
+                f'<a href="{cls._escape_attribute(twitter_url)}">𝕏</a>'
+            )
+
+        if telegram_url:
+
+            social_lines.append(
+                f'<a href="{cls._escape_attribute(telegram_url)}">TG</a>'
+            )
+
+        if website_url:
+
+            social_lines.append(
+                f'<a href="{cls._escape_attribute(website_url)}">WEB</a>'
+            )
+
+        if social_lines:
+
+            lines.append(
+                "🔗 " + " • ".join(social_lines)
+            )
+
+        # =====================================================
+        # TOKEN TOOLS — ONE LINE
+        # =====================================================
+
+        tool_lines = []
+
+        if dex_url:
+
+            tool_lines.append(
+                f'<a href="{cls._escape_attribute(dex_url)}">DS</a>'
+            )
+
+        if solscan_url:
+
+            tool_lines.append(
+                f'<a href="{cls._escape_attribute(solscan_url)}">SCAN</a>'
+            )
+
+        if gecko_url:
+
+            tool_lines.append(
+                f'<a href="{cls._escape_attribute(gecko_url)}">GT</a>'
+            )
+
+        if gmgn_url:
+
+            tool_lines.append(
+                f'<a href="{cls._escape_attribute(gmgn_url)}">GMGN</a>'
+            )
+
+        if tool_lines:
+
+            lines.append(
+                "🔎 " + " • ".join(tool_lines)
+            )
+
+        # =====================================================
+        # CONTRACT — COMPACT
+        # =====================================================
+
+        if address:
+
+            lines.extend(
+                [
+                    f"📄 <code>{cls._escape_html(address)}</code>",
+                    "",
+                    "⚠️ <i>DYOR • Wannan signal ba guarantee bane.</i>",
+                ]
+            )
+
+        return "\n".join(lines)
+
+    # HTML ESCAPE
+    # =========================================================
+
+    @staticmethod
+    def _escape_html(
+        value: str,
+    ) -> str:
+
+        value = str(
+            value or ""
         )
 
-        return "\n".join(
-            lines
+        return (
+            value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+
+    # =========================================================
+    # HTML ATTRIBUTE ESCAPE
+    # =========================================================
+
+    @staticmethod
+    def _escape_attribute(
+        value: str,
+    ) -> str:
+
+        value = str(
+            value or ""
+        )
+
+        return (
+            value
+            .replace("&", "&amp;")
+            .replace('"', "&quot;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
         )
 
 
@@ -1162,6 +1679,7 @@ async def test_engine():
             self,
             chat_id,
             text,
+            parse_mode="HTML",
             disable_web_page_preview=True,
         ):
 

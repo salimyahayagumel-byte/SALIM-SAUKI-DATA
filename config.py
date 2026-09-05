@@ -95,12 +95,22 @@ AUTO_SIGNAL_MIN_RECOMMENDATION = int(
     )
 )
 
+AUTO_SIGNAL_REQUIRE_SECURITY = os.getenv(
+    "AUTO_SIGNAL_REQUIRE_SECURITY",
+    "true",
+).lower() == "true"
+
 AUTO_SIGNAL_MIN_SECURITY = int(
     os.getenv(
         "AUTO_SIGNAL_MIN_SECURITY",
         "90",
     )
 )
+
+AUTO_SIGNAL_REQUIRE_FINAL_SIGNAL = os.getenv(
+    "AUTO_SIGNAL_REQUIRE_FINAL_SIGNAL",
+    "true",
+).lower() == "true"
 
 
 # =========================================================
@@ -165,6 +175,262 @@ MIN_BUY_RATIO = float(
 
 
 # =========================================================
+# GEM DETECTION
+# =========================================================
+
+MIN_GEM_SCORE = int(
+    os.getenv(
+        "MIN_GEM_SCORE",
+        "70",
+    )
+)
+
+STRONG_GEM_SCORE = int(
+    os.getenv(
+        "STRONG_GEM_SCORE",
+        "80",
+    )
+)
+
+EARLY_GEM_SCORE = int(
+    os.getenv(
+        "EARLY_GEM_SCORE",
+        "60",
+    )
+)
+
+WATCH_SCORE = int(
+    os.getenv(
+        "WATCH_SCORE",
+        "50",
+    )
+)
+
+MIN_GEM_SIGNAL = int(
+    os.getenv(
+        "MIN_GEM_SIGNAL",
+        "70",
+    )
+)
+
+MIN_STRONG_GEM = int(
+    os.getenv(
+        "MIN_STRONG_GEM",
+        "75",
+    )
+)
+
+
+# =========================================================
+# AI SCORING
+# =========================================================
+
+MIN_AI_SIGNAL = int(
+    os.getenv(
+        "MIN_AI_SIGNAL",
+        "65",
+    )
+)
+
+AI_STRONG_BUY_SCORE = int(
+    os.getenv(
+        "AI_STRONG_BUY_SCORE",
+        "85",
+    )
+)
+
+AI_BUY_SCORE = int(
+    os.getenv(
+        "AI_BUY_SCORE",
+        "75",
+    )
+)
+
+AI_WATCH_SCORE = int(
+    os.getenv(
+        "AI_WATCH_SCORE",
+        "65",
+    )
+)
+
+
+# =========================================================
+# SECURITY
+# =========================================================
+
+MIN_SECURITY_SCORE = int(
+    os.getenv(
+        "MIN_SECURITY_SCORE",
+        "80",
+    )
+)
+
+AUTO_SIGNAL_MIN_SECURITY = int(
+    os.getenv(
+        "AUTO_SIGNAL_MIN_SECURITY",
+        "90",
+    )
+)
+
+REQUIRE_MINT_AUTHORITY_DISABLED = os.getenv(
+    "REQUIRE_MINT_AUTHORITY_DISABLED",
+    "true",
+).lower() == "true"
+
+REQUIRE_FREEZE_AUTHORITY_DISABLED = os.getenv(
+    "REQUIRE_FREEZE_AUTHORITY_DISABLED",
+    "true",
+).lower() == "true"
+
+REQUIRE_INITIALIZED = os.getenv(
+    "REQUIRE_INITIALIZED",
+    "true",
+).lower() == "true"
+
+
+# =========================================================
+# LIQUIDITY / VOLUME SAFETY
+# =========================================================
+
+FINAL_MIN_LIQUIDITY = float(
+    os.getenv(
+        "FINAL_MIN_LIQUIDITY",
+        "20000",
+    )
+)
+
+FINAL_MIN_MARKET_CAP = float(
+    os.getenv(
+        "FINAL_MIN_MARKET_CAP",
+        "30000",
+    )
+)
+
+FINAL_MAX_MARKET_CAP = float(
+    os.getenv(
+        "FINAL_MAX_MARKET_CAP",
+        "5000000",
+    )
+)
+
+FINAL_MIN_BUY_RATIO = float(
+    os.getenv(
+        "FINAL_MIN_BUY_RATIO",
+        "0.55",
+    )
+)
+
+FINAL_MIN_VOLUME_RATIO = float(
+    os.getenv(
+        "FINAL_MIN_VOLUME_RATIO",
+        "0.05",
+    )
+)
+
+FINAL_MIN_TXNS = int(
+    os.getenv(
+        "FINAL_MIN_TXNS",
+        "50",
+    )
+)
+
+MAX_SAFE_VOLUME_RATIO = float(
+    os.getenv(
+        "MAX_SAFE_VOLUME_RATIO",
+        "15",
+    )
+)
+
+EXTREME_VOLUME_RATIO = float(
+    os.getenv(
+        "EXTREME_VOLUME_RATIO",
+        "25",
+    )
+)
+
+
+# =========================================================
+# RECOMMENDATION ENGINE
+# =========================================================
+
+RECOMMENDATION_STRONG_BUY = int(
+    os.getenv(
+        "RECOMMENDATION_STRONG_BUY",
+        "85",
+    )
+)
+
+RECOMMENDATION_BUY = int(
+    os.getenv(
+        "RECOMMENDATION_BUY",
+        "75",
+    )
+)
+
+RECOMMENDATION_WATCH = int(
+    os.getenv(
+        "RECOMMENDATION_WATCH",
+        "60",
+    )
+)
+
+RECOMMENDATION_HIGH_RISK = int(
+    os.getenv(
+        "RECOMMENDATION_HIGH_RISK",
+        "45",
+    )
+)
+
+RECOMMENDATION_MIN_SECURITY = int(
+    os.getenv(
+        "RECOMMENDATION_MIN_SECURITY",
+        "90",
+    )
+)
+
+RECOMMENDATION_MIN_LIQUIDITY = float(
+    os.getenv(
+        "RECOMMENDATION_MIN_LIQUIDITY",
+        "10000",
+    )
+)
+
+RECOMMENDATION_MIN_VOLUME = float(
+    os.getenv(
+        "RECOMMENDATION_MIN_VOLUME",
+        "5000",
+    )
+)
+
+RECOMMENDATION_MIN_TXNS = int(
+    os.getenv(
+        "RECOMMENDATION_MIN_TXNS",
+        "20",
+    )
+)
+
+
+# =========================================================
+# WHALE / SMART MONEY
+# =========================================================
+
+WHALE_ANALYSIS_ENABLED = os.getenv(
+    "WHALE_ANALYSIS_ENABLED",
+    "true",
+).lower() == "true"
+
+SMART_MONEY_ENABLED = os.getenv(
+    "SMART_MONEY_ENABLED",
+    "true",
+).lower() == "true"
+
+WALLET_REPEAT_WINNER_TRACKING = os.getenv(
+    "WALLET_REPEAT_WINNER_TRACKING",
+    "true",
+).lower() == "true"
+
+
+# =========================================================
 # DATABASE
 # =========================================================
 
@@ -199,7 +465,7 @@ HTTP_RETRIES = int(
 
 BOT_NAME = os.getenv(
     "BOT_NAME",
-    "DEX ANALYSIS BOT",
+    "SALIM SAUKI DATA",
 )
 
 ADMIN_USERNAME = os.getenv(
@@ -209,6 +475,11 @@ ADMIN_USERNAME = os.getenv(
 
 GROUP_USERNAME = os.getenv(
     "GROUP_USERNAME",
+    "",
+)
+
+CHANNEL_USERNAME = os.getenv(
+    "CHANNEL_USERNAME",
     "",
 )
 

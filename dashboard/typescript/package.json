@@ -1,0 +1,11 @@
+{
+  "name": "salim-sauki-data-v8-dashboard",
+  "version": "8.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

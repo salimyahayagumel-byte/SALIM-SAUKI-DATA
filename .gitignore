@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+
+.env
+.venv/
+venv/
+logs/
+cache/
+*.db
+*.sqlite3
+.vscode/
+.idea/
+salim_sauki_data.db
+*.db-*
+salim_sauki_data.db.V5-ZIP-BACKUP

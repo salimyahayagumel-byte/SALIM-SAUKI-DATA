@@ -1,4 +1,5 @@
 import re
+import time
 from typing import Any, Dict, List, Tuple
 
 from services.dexscreener import DexScreener
@@ -28,6 +29,11 @@ class TokenScanner:
 
     MIN_MARKETCAP = 10_000
     MAX_MARKETCAP = 5_000_000
+
+    # Only very early tokens are eligible for discovery/signals.
+    # 24 hours is a hard maximum; missing/invalid pair age is rejected
+    # because the bot cannot safely verify that the token is new enough.
+    MAX_TOKEN_AGE_SECONDS = 24 * 60 * 60
 
     MIN_LIQUIDITY = 10_000
     MIN_VOLUME_24H = 5_000
@@ -142,6 +148,7 @@ class TokenScanner:
             "volume_rejected": 0,
             "txns_rejected": 0,
             "buy_ratio_rejected": 0,
+            "age_rejected": 0,
             "scored": 0,
             "returned": 0,
         }
@@ -173,6 +180,7 @@ class TokenScanner:
             "volume_rejected": 0,
             "txns_rejected": 0,
             "buy_ratio_rejected": 0,
+            "age_rejected": 0,
             "scored": 0,
             "returned": 0,
         }
@@ -492,6 +500,27 @@ class TokenScanner:
                 buy_ratio = (
                     buys / total_txns
                 )
+
+            # =================================================
+            # HARD TOKEN AGE FILTER
+            # =================================================
+            # User requirement: only tokens/pairs that are 24 hours old
+            # or newer may enter the scanner pipeline.
+            pair_created = pair.get("pairCreatedAt")
+            try:
+                created_ms = float(pair_created or 0)
+                created_seconds = created_ms / 1000.0 if created_ms > 10_000_000_000 else created_ms
+                token_age_seconds = time.time() - created_seconds
+            except (TypeError, ValueError, OverflowError):
+                token_age_seconds = float("inf")
+
+            if (
+                created_seconds <= 0
+                or token_age_seconds < 0
+                or token_age_seconds > self.MAX_TOKEN_AGE_SECONDS
+            ):
+                self.last_scan_stats["age_rejected"] += 1
+                continue
 
             # =================================================
             # HARD MARKET FILTER
@@ -1311,7 +1340,8 @@ class TokenScanner:
             f"LIQ_REJ={self.last_scan_stats['liquidity_rejected']} | "
             f"VOL_REJ={self.last_scan_stats['volume_rejected']} | "
             f"TXN_REJ={self.last_scan_stats['txns_rejected']} | "
-            f"BUY_REJ={self.last_scan_stats['buy_ratio_rejected']}"
+            f"BUY_REJ={self.last_scan_stats['buy_ratio_rejected']} | "
+            f"AGE_REJ={self.last_scan_stats['age_rejected']}"
         )
 
         print(

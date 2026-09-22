@@ -35,6 +35,7 @@ NOT FINANCIAL ADVICE.
 """
 
 import asyncio
+from datetime import datetime
 import time
 from typing import Any, Dict, List, Set, Tuple
 from urllib.parse import quote
@@ -1919,7 +1920,7 @@ class AutoSignalEngine:
         # AGE — calculated only when pair_created is real data.
         # -----------------------------------------------------
         age_text = ""
-        pair_created = token.get("pair_created")
+        pair_created = token.get("pair_created", token.get("pairCreatedAt"))
         try:
             created_ms = float(pair_created or 0)
             if created_ms > 0:
@@ -1930,7 +1931,7 @@ class AutoSignalEngine:
                     age_text = f"{age_seconds // 3600}h"
                 else:
                     age_text = f"{age_seconds // 86400}d"
-        except (TypeError, ValueError, OverflowError):
+        except (TypeError, ValueError, OverflowError, OSError):
             age_text = ""
 
         # -----------------------------------------------------
@@ -2128,10 +2129,21 @@ class AutoSignalEngine:
                 f"🛡 Security: <b>{security_score}/100</b>",
                 f"🎯 Final: <b>{final_score}/100</b>",
             ]
+            if age_text:
+                essential.append(f"🕒 Age: <b>{age_text}</b>")
+            compact_socials = []
+            if twitter_url:
+                compact_socials.append(f'<a href="{cls._escape_attribute(twitter_url)}">𝕏 X</a>')
+            if telegram_url:
+                compact_socials.append(f'<a href="{cls._escape_attribute(telegram_url)}">Telegram</a>')
+            if website_url:
+                compact_socials.append(f'<a href="{cls._escape_attribute(website_url)}">Website</a>')
+            if compact_socials:
+                essential.append("🔗 " + " • ".join(compact_socials))
             if scan_url:
-                essential.append(f'🔗 <a href="{cls._escape_attribute(scan_url)}">{scan_label}</a>')
+                essential.append(f'🔎 <a href="{cls._escape_attribute(scan_url)}">{scan_label}</a>')
             if dex_url:
-                essential.append(f'🔗 <a href="{cls._escape_attribute(dex_url)}">Chart</a>')
+                essential.append(f'📊 <a href="{cls._escape_attribute(dex_url)}">Chart</a>')
             if address:
                 essential.append(f"📄 <code>{cls._escape_html(address)}</code>")
             essential.extend(["", "⚠️ <i>DYOR — Not financial advice.</i>"])

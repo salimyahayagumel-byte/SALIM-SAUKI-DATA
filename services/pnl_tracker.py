@@ -1,8 +1,8 @@
 """
 SALIM SAUKI DATA
-PNL TRACKER V9.1
+PNL TRACKER V9.2
 
-Price-based PNL tracking for successfully delivered GEM signals.
+Market-cap-based PNL tracking for successfully delivered GEM signals. Price is retained as supporting market data.
 
 Key fixes in V9.1:
     - Tracks chain + token contract + entry pair address.
@@ -12,7 +12,9 @@ Key fixes in V9.1:
       that token on the same chain.
     - Explicitly closes SQLite connections to prevent ResourceWarning leaks.
     - Preserves milestone, drawdown, Telegram /pnl filters and restart safety.
-    - Keeps PNL price-based only; it is not a user's actual wallet PNL.
+    - Uses entry/current market cap as the primary PNL metric.
+    - Keeps price data for reference and pair-aware market selection.
+    - It is not a user's actual wallet PNL.
 
 PNL does not include trading fees, slippage, taxes, position size, or execution
 price differences.
@@ -21,6 +23,7 @@ price differences.
 import asyncio
 import os
 import sqlite3
+from datetime import datetime
 import threading
 import time
 from contextlib import contextmanager
@@ -129,6 +132,13 @@ class PNLTracker:
                         address TEXT NOT NULL,
                         symbol TEXT,
                         pair_address TEXT,
+                        pair_created REAL DEFAULT 0,
+                        twitter_url TEXT DEFAULT '',
+                        telegram_url TEXT DEFAULT '',
+                        website_url TEXT DEFAULT '',
+                        entry_market_cap REAL DEFAULT 0,
+                        current_market_cap REAL DEFAULT 0,
+                        highest_market_cap REAL DEFAULT 0,
                         entry_price REAL NOT NULL,
                         current_price REAL NOT NULL,
                         highest_price REAL NOT NULL,
@@ -156,6 +166,34 @@ class PNLTracker:
                     "drawdown_alerted_peak": (
                         "ALTER TABLE pnl_tracking "
                         "ADD COLUMN drawdown_alerted_peak REAL DEFAULT 0"
+                    ),
+                    "entry_market_cap": (
+                        "ALTER TABLE pnl_tracking "
+                        "ADD COLUMN entry_market_cap REAL DEFAULT 0"
+                    ),
+                    "current_market_cap": (
+                        "ALTER TABLE pnl_tracking "
+                        "ADD COLUMN current_market_cap REAL DEFAULT 0"
+                    ),
+                    "highest_market_cap": (
+                        "ALTER TABLE pnl_tracking "
+                        "ADD COLUMN highest_market_cap REAL DEFAULT 0"
+                    ),
+                    "pair_created": (
+                        "ALTER TABLE pnl_tracking "
+                        "ADD COLUMN pair_created REAL DEFAULT 0"
+                    ),
+                    "twitter_url": (
+                        "ALTER TABLE pnl_tracking "
+                        "ADD COLUMN twitter_url TEXT DEFAULT ''"
+                    ),
+                    "telegram_url": (
+                        "ALTER TABLE pnl_tracking "
+                        "ADD COLUMN telegram_url TEXT DEFAULT ''"
+                    ),
+                    "website_url": (
+                        "ALTER TABLE pnl_tracking "
+                        "ADD COLUMN website_url TEXT DEFAULT ''"
                     ),
                 }
 
@@ -190,7 +228,10 @@ class PNLTracker:
             return False
 
         entry_price = self._number(token.get("price"))
-        if entry_price <= 0:
+        entry_market_cap = self._number(
+            token.get("marketcap", token.get("market_cap"))
+        )
+        if entry_price <= 0 or entry_market_cap <= 0:
             return False
 
         chain = str(
@@ -214,6 +255,13 @@ class PNLTracker:
             or ""
         ).strip()
 
+        pair_created = self._number(
+            token.get("pair_created", token.get("pairCreatedAt"))
+        )
+        twitter_url = str(token.get("twitter_url", "") or "").strip()
+        telegram_url = str(token.get("telegram_url", "") or "").strip()
+        website_url = str(token.get("website_url", "") or "").strip()
+
         now = time.time()
 
         with self._lock:
@@ -229,6 +277,13 @@ class PNLTracker:
                             address,
                             symbol,
                             pair_address,
+                            pair_created,
+                            twitter_url,
+                            telegram_url,
+                            website_url,
+                            entry_market_cap,
+                            current_market_cap,
+                            highest_market_cap,
                             entry_price,
                             current_price,
                             highest_price,
@@ -238,7 +293,7 @@ class PNLTracker:
                             started_at,
                             updated_at
                         )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)
                     ON CONFLICT(signal_key) DO NOTHING
                     """,
                     (
@@ -247,6 +302,13 @@ class PNLTracker:
                         address,
                         symbol,
                         pair_address,
+                        pair_created,
+                        twitter_url,
+                        telegram_url,
+                        website_url,
+                        entry_market_cap,
+                        entry_market_cap,
+                        entry_market_cap,
                         entry_price,
                         entry_price,
                         entry_price,
@@ -315,52 +377,46 @@ class PNLTracker:
         by_chain: Dict[str, List[Dict[str, Any]]] = {}
 
         for row in rows:
-            chain = str(
-                row.get("chain", "")
-                or ""
-            ).lower().strip()
-
+            chain = str(row.get("chain", "") or "").lower().strip()
             if chain:
-                by_chain.setdefault(
-                    chain,
-                    [],
-                ).append(row)
+                by_chain.setdefault(chain, []).append(row)
 
         for chain, chain_rows in by_chain.items():
-            prices = await self._fetch_prices(
-                chain_rows,
-                chain,
-            )
+            metrics = await self._fetch_pair_metrics(chain_rows, chain)
 
             for row in chain_rows:
-                price = prices.get(
-                    row["signal_key"]
-                )
-
-                if price is None or price <= 0:
+                metric = metrics.get(row["signal_key"])
+                if not metric:
                     continue
 
-                await self._process_price(
+                price = self._number(metric.get("price"))
+                market_cap = self._number(metric.get("market_cap"))
+
+                if market_cap <= 0:
+                    continue
+
+                await self._process_market_cap(
                     row,
+                    market_cap,
                     price,
                 )
 
-    async def _fetch_prices(
+    async def _fetch_pair_metrics(
         self,
         rows: List[Dict[str, Any]],
         chain: str,
-    ) -> Dict[str, float]:
-        """Return one price per tracked signal.
+    ) -> Dict[str, Dict[str, float]]:
+        """Return price + market cap from the correct DexScreener pool.
 
         Selection priority:
             1. Exact pair used at signal entry.
             2. If that pair is gone, the most-liquid valid pool for the
                same token on the same chain.
 
-        This deliberately avoids the old behaviour of choosing the highest
-        price among pools, which can materially inflate PNL.
+        The selected pool supplies both price and market cap so the two
+        metrics never come from different pools.
         """
-        prices: Dict[str, float] = {}
+        metrics: Dict[str, Dict[str, float]] = {}
 
         for start in range(0, len(rows), 30):
             batch_rows = rows[start:start + 30]
@@ -369,213 +425,121 @@ class PNLTracker:
                 for row in batch_rows
                 if str(row.get("address", "") or "").strip()
             ]
-
             if not addresses:
                 continue
 
             try:
                 pairs = await self.dex.tokens(addresses)
             except Exception as exc:
-                print(
-                    "⚠️ PNL price lookup failed "
-                    f"[{chain.upper()}]: {exc}"
-                )
+                print(f"⚠️ PNL market lookup failed [{chain.upper()}]: {exc}")
                 continue
 
             if not isinstance(pairs, list):
                 continue
 
-            wanted = {
-                str(address).strip()
-                for address in addresses
-            }
-
-            exact_pair_by_signal: Dict[str, Tuple[float, float]] = {}
-            fallback_by_signal: Dict[str, Tuple[float, float]] = {}
-
-            row_by_key = {
-                row["signal_key"]: row
-                for row in batch_rows
-            }
-
+            wanted = set(addresses)
+            row_by_key = {row["signal_key"]: row for row in batch_rows}
             signal_keys_by_address: Dict[str, List[str]] = {}
             for row in batch_rows:
-                address = str(
-                    row.get("address", "")
-                    or ""
-                ).strip()
-
+                address = str(row.get("address", "") or "").strip()
                 if address:
-                    signal_keys_by_address.setdefault(
-                        address,
-                        [],
-                    ).append(
-                        row["signal_key"]
-                    )
+                    signal_keys_by_address.setdefault(address, []).append(row["signal_key"])
+
+            exact: Dict[str, Tuple[float, float, float]] = {}
+            fallback: Dict[str, Tuple[float, float, float]] = {}
 
             for pair in pairs:
                 if not isinstance(pair, dict):
                     continue
-
-                if str(
-                    pair.get("chainId", "")
-                    or ""
-                ).lower().strip() != chain:
+                if str(pair.get("chainId", "") or "").lower().strip() != chain:
                     continue
 
                 base_token = pair.get("baseToken")
                 if not isinstance(base_token, dict):
                     continue
-
-                address = str(
-                    base_token.get("address", "")
-                    or ""
-                ).strip()
-
+                address = str(base_token.get("address", "") or "").strip()
                 if address not in wanted:
                     continue
 
-                price = self._number(
-                    pair.get("priceUsd")
-                )
-
-                if price <= 0:
+                price = self._number(pair.get("priceUsd"))
+                market_cap = self._number(pair.get("marketCap"))
+                if market_cap <= 0:
+                    market_cap = self._number(pair.get("fdv"))
+                if price <= 0 and market_cap <= 0:
                     continue
 
                 liquidity_data = pair.get("liquidity")
                 liquidity = (
-                    self._number(
-                        liquidity_data.get("usd")
-                    )
-                    if isinstance(
-                        liquidity_data,
-                        dict,
-                    )
-                    else 0.0
+                    self._number(liquidity_data.get("usd"))
+                    if isinstance(liquidity_data, dict) else 0.0
                 )
+                pair_address = str(pair.get("pairAddress", "") or "").strip()
+                metric = (liquidity, price, market_cap)
 
-                pair_address = str(
-                    pair.get("pairAddress", "")
-                    or ""
-                ).strip()
-
-                for signal_key in signal_keys_by_address.get(
-                    address,
-                    [],
-                ):
+                for signal_key in signal_keys_by_address.get(address, []):
                     row = row_by_key.get(signal_key)
                     if not row:
                         continue
-
-                    stored_pair = str(
-                        row.get("pair_address", "")
-                        or ""
-                    ).strip()
-
-                    if stored_pair and (
-                        pair_address.lower()
-                        == stored_pair.lower()
-                    ):
-                        previous = exact_pair_by_signal.get(
-                            signal_key
-                        )
-
-                        if (
-                            previous is None
-                            or liquidity > previous[0]
-                        ):
-                            exact_pair_by_signal[
-                                signal_key
-                            ] = (
-                                liquidity,
-                                price,
-                            )
-
-                    previous = fallback_by_signal.get(
-                        signal_key
-                    )
-
-                    # Fallback is the most-liquid pool, not the
-                    # highest-price pool.
-                    if (
-                        previous is None
-                        or liquidity > previous[0]
-                    ):
-                        fallback_by_signal[
-                            signal_key
-                        ] = (
-                            liquidity,
-                            price,
-                        )
+                    stored_pair = str(row.get("pair_address", "") or "").strip()
+                    if stored_pair and pair_address.lower() == stored_pair.lower():
+                        if signal_key not in exact or liquidity > exact[signal_key][0]:
+                            exact[signal_key] = metric
+                    if signal_key not in fallback or liquidity > fallback[signal_key][0]:
+                        fallback[signal_key] = metric
 
             for row in batch_rows:
                 signal_key = row["signal_key"]
-
-                exact = exact_pair_by_signal.get(
-                    signal_key
-                )
-
-                fallback = fallback_by_signal.get(
-                    signal_key
-                )
-
-                selected = exact or fallback
-
+                selected = exact.get(signal_key) or fallback.get(signal_key)
                 if selected:
-                    prices[signal_key] = selected[1]
+                    metrics[signal_key] = {
+                        "price": selected[1],
+                        "market_cap": selected[2],
+                    }
 
-        return prices
+        return metrics
 
-    async def _process_price(
+    async def _fetch_prices(
+        self,
+        rows: List[Dict[str, Any]],
+        chain: str,
+    ) -> Dict[str, float]:
+        """Backward-compatible price lookup using the same pair selection."""
+        metrics = await self._fetch_pair_metrics(rows, chain)
+        return {key: self._number(value.get("price")) for key, value in metrics.items()}
+
+    async def _fetch_market_caps(
+        self,
+        rows: List[Dict[str, Any]],
+        chain: str,
+    ) -> Dict[str, float]:
+        """Return market cap from the same selected pair used for pricing."""
+        metrics = await self._fetch_pair_metrics(rows, chain)
+        return {key: self._number(value.get("market_cap")) for key, value in metrics.items()}
+
+    async def _process_market_cap(
         self,
         row: Dict[str, Any],
-        price: float,
+        market_cap: float,
+        current_price: float = 0.0,
     ):
-        entry = self._number(
-            row["entry_price"]
-        )
-
-        if entry <= 0:
+        entry_mc = self._number(row.get("entry_market_cap"))
+        if entry_mc <= 0 or market_cap <= 0:
             return
 
-        pnl = (
-            (price - entry)
-            / entry
-        ) * 100.0
-
-        previous_highest_pnl = self._number(
-            row["highest_pnl"]
-        )
-
-        highest_price = max(
-            self._number(
-                row["highest_price"]
-            ),
-            price,
-        )
-
-        highest_pnl = max(
-            previous_highest_pnl,
-            pnl,
-        )
-
-        old_milestone = self._number(
-            row["last_milestone"]
-        )
-
-        new_milestone = self._highest_reached(
-            pnl
-        )
-
-        stored_milestone = max(
-            old_milestone,
-            new_milestone,
-        )
+        pnl = ((market_cap - entry_mc) / entry_mc) * 100.0
+        previous_highest_pnl = self._number(row.get("highest_pnl"))
+        highest_mc = max(self._number(row.get("highest_market_cap")), market_cap)
+        highest_pnl = max(previous_highest_pnl, pnl)
+        old_milestone = self._number(row.get("last_milestone"))
+        new_milestone = self._highest_reached(pnl)
+        stored_milestone = max(old_milestone, new_milestone)
 
         self._update_row(
             signal_key=row["signal_key"],
-            current_price=price,
-            highest_price=highest_price,
+            current_market_cap=market_cap,
+            highest_market_cap=highest_mc,
+            current_price=current_price,
+            highest_price=max(self._number(row.get("highest_price")), current_price),
             highest_pnl=highest_pnl,
             last_milestone=stored_milestone,
         )
@@ -583,7 +547,8 @@ class PNLTracker:
         if new_milestone > old_milestone:
             await self._send_update(
                 row=row,
-                current_price=price,
+                current_market_cap=market_cap,
+                current_price=current_price,
                 pnl=pnl,
                 milestone=new_milestone,
                 highest_pnl=highest_pnl,
@@ -591,22 +556,9 @@ class PNLTracker:
                 alert_type="milestone",
             )
 
-        # Alert once for each new meaningful peak followed by a
-        # meaningful decline. A later higher peak can trigger again.
-        drawdown = max(
-            0.0,
-            highest_pnl - pnl,
-        )
-
-        alerted_peak = self._number(
-            row.get("drawdown_alerted_peak")
-        )
-
-        new_peak_since_alert = (
-            highest_pnl
-            > alerted_peak + 0.1
-        )
-
+        drawdown = max(0.0, highest_pnl - pnl)
+        alerted_peak = self._number(row.get("drawdown_alerted_peak"))
+        new_peak_since_alert = highest_pnl > alerted_peak + 0.1
         should_alert_drawdown = (
             highest_pnl >= self.drawdown_alert
             and drawdown >= self.drawdown_alert
@@ -614,14 +566,11 @@ class PNLTracker:
         )
 
         if should_alert_drawdown:
-            self._mark_drawdown_alert(
-                row["signal_key"],
-                highest_pnl,
-            )
-
+            self._mark_drawdown_alert(row["signal_key"], highest_pnl)
             await self._send_update(
                 row=row,
-                current_price=price,
+                current_market_cap=market_cap,
+                current_price=current_price,
                 pnl=pnl,
                 milestone=stored_milestone,
                 highest_pnl=highest_pnl,
@@ -629,21 +578,18 @@ class PNLTracker:
                 alert_type="drawdown",
             )
 
-    def _highest_reached(
-        self,
-        pnl: float,
-    ) -> float:
-        reached = 0.0
-
-        for milestone in self.milestones:
-            if pnl >= milestone:
-                reached = milestone
-
-        return reached
+    async def _process_price(self, row: Dict[str, Any], price: float):
+        """Legacy compatibility wrapper; MC remains the primary PNL metric."""
+        if price <= 0:
+            return
+        market_cap = self._number(row.get("current_market_cap"))
+        if market_cap > 0:
+            await self._process_market_cap(row, market_cap, price)
 
     async def _send_update(
         self,
         row: Dict[str, Any],
+        current_market_cap: float,
         current_price: float,
         pnl: float,
         milestone: float,
@@ -701,15 +647,16 @@ class PNLTracker:
                 f"🟢 <b>${self._escape(symbol)}</b>",
                 chain_label,
                 "",
-                "💰 <b>PRICE</b>",
-                f"┗ Entry: <b>{self._format_price(row['entry_price'])}</b>",
-                f"┗ Current: <b>{self._format_price(current_price)}</b>",
+                "💰 <b>MARKET CAP</b>",
+                f"┗ Entry MC: <b>{self._format_money(row['entry_market_cap'])}</b>",
+                f"┗ Current MC: <b>{self._format_money(current_market_cap)}</b>",
                 "",
                 "📊 <b>PNL</b>",
                 f"┗ Current PNL: <b>{pnl:+.1f}%</b>",
                 milestone_line,
                 f"┗ Multiple: <b>{multiplier:.2f}X</b>",
                 f"┗ Best PNL: <b>+{highest_pnl:.1f}%</b>",
+                f"┗ Best MC: <b>{self._format_money(row.get('highest_market_cap'))}</b>",
                 (
                     f"┗ Drawdown: <b>-{drawdown:.1f}%</b>"
                     if drawdown > 0
@@ -719,7 +666,8 @@ class PNLTracker:
                 f"📄 <code>{self._escape(row['address'])}</code>",
                 pair_line,
                 "",
-                "⚠️ <i>PNL is price-based; fees/slippage are not included.</i>",
+                f"💵 Price: <b>{self._format_price(current_price)}</b>",
+                "⚠️ <i>PNL is market-cap based; fees/slippage/taxes are not included.</i>",
             ]
         )
 
@@ -772,6 +720,13 @@ class PNLTracker:
                 address,
                 symbol,
                 pair_address,
+                pair_created,
+                twitter_url,
+                telegram_url,
+                website_url,
+                entry_market_cap,
+                current_market_cap,
+                highest_market_cap,
                 entry_price,
                 current_price,
                 highest_price,
@@ -832,6 +787,13 @@ class PNLTracker:
             "address",
             "symbol",
             "pair_address",
+            "pair_created",
+            "twitter_url",
+            "telegram_url",
+            "website_url",
+            "entry_market_cap",
+            "current_market_cap",
+            "highest_market_cap",
             "entry_price",
             "current_price",
             "highest_price",
@@ -1004,25 +966,23 @@ class PNLTracker:
             ),
         }
 
+    def _highest_reached(self, pnl: float) -> float:
+        """Return the highest configured milestone reached by this MC PNL."""
+        reached = 0.0
+        for milestone in self.milestones:
+            if pnl >= milestone:
+                reached = milestone
+            else:
+                break
+        return reached
+
     @staticmethod
-    def _row_pnl(
-        row: Dict[str, Any],
-    ) -> float:
-        entry = PNLTracker._number(
-            row.get("entry_price")
-        )
-
-        current = PNLTracker._number(
-            row.get("current_price")
-        )
-
+    def _row_pnl(row: Dict[str, Any]) -> float:
+        entry = PNLTracker._number(row.get("entry_market_cap"))
+        current = PNLTracker._number(row.get("current_market_cap"))
         if entry <= 0:
             return 0.0
-
-        return (
-            (current - entry)
-            / entry
-        ) * 100.0
+        return ((current - entry) / entry) * 100.0
 
     @staticmethod
     def format_pnl_summary(
@@ -1132,116 +1092,56 @@ class PNLTracker:
         return "\n".join(lines)
 
     @staticmethod
-    def format_manual_pnl(
-        row: Dict[str, Any],
-    ) -> str:
-        """Format one tracked PNL row for /pnl."""
-        entry = PNLTracker._number(
-            row.get("entry_price")
-        )
-
-        current = PNLTracker._number(
-            row.get("current_price")
-        )
-
-        highest = PNLTracker._number(
-            row.get("highest_price")
-        )
-
-        highest_pnl = PNLTracker._number(
-            row.get("highest_pnl")
-        )
-
-        pnl = (
-            (
-                current - entry
-            )
-            / entry
-            * 100.0
-        ) if entry > 0 else 0.0
-
-        multiple = 1.0 + (
-            pnl / 100.0
-        )
-
-        change = (
-            "🟢"
-            if pnl > 0
-            else "🔴"
-            if pnl < 0
-            else "⚪"
-        )
-
-        chain = str(
-            row.get("chain", "")
-        ).lower()
-
+    def format_manual_pnl(row: Dict[str, Any]) -> str:
+        """Format one tracked PNL row using market cap as the primary metric."""
+        entry_mc = PNLTracker._number(row.get("entry_market_cap"))
+        current_mc = PNLTracker._number(row.get("current_market_cap"))
+        highest_mc = PNLTracker._number(row.get("highest_market_cap"))
+        highest_pnl = PNLTracker._number(row.get("highest_pnl"))
+        current_price = PNLTracker._number(row.get("current_price"))
+        pnl = PNLTracker._row_pnl(row)
+        multiple = 1.0 + (pnl / 100.0)
+        change = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "⚪"
+        chain = str(row.get("chain", "")).lower()
         chain_label = (
-            "🟣 Solana"
-            if chain == "solana"
-            else "🔵 Base"
-            if chain == "base"
-            else f"⚪ {chain.title()}"
+            "🟣 Solana" if chain == "solana" else
+            "🔵 Base" if chain == "base" else
+            f"⚪ {chain.title()}"
         )
-
-        milestone = PNLTracker._number(
-            row.get("last_milestone")
-        )
-
-        drawdown = max(
-            0.0,
-            highest_pnl - pnl,
-        )
-
-        pair_address = str(
-            row.get("pair_address", "")
-            or ""
-        ).strip()
-
+        milestone = PNLTracker._number(row.get("last_milestone"))
+        drawdown = max(0.0, highest_pnl - pnl)
+        pair_address = str(row.get("pair_address", "") or "").strip()
+        # AGE is shown by the signal engine; /pnl intentionally does not
+        # reintroduce the old Created timestamp.
+        twitter_url = str(row.get("twitter_url", "") or "").strip()
+        telegram_url = str(row.get("telegram_url", "") or "").strip()
+        website_url = str(row.get("website_url", "") or "").strip()
         lines = [
             f"{change} <b>${PNLTracker._escape(row.get('symbol', 'N/A'))}</b>",
             chain_label,
-            f"💰 Entry: <b>{PNLTracker._format_price(entry)}</b>",
-            f"📍 Current: <b>{PNLTracker._format_price(current)}</b>",
-            f"📊 PNL: <b>{pnl:+.1f}%</b>",
+            f"💰 Entry MC: <b>{PNLTracker._format_money(entry_mc)}</b>",
+            f"📍 Current MC: <b>{PNLTracker._format_money(current_mc)}</b>",
+            f"📊 MC PNL: <b>{pnl:+.1f}%</b>",
             f"🚀 Multiple: <b>{multiple:.2f}X</b>",
+            f"🏆 Best MC: <b>{PNLTracker._format_money(highest_mc)}</b>",
             f"🏆 Best PNL: <b>{highest_pnl:+.1f}%</b>",
-            f"💵 Best Price: <b>{PNLTracker._format_price(highest)}</b>",
-            (
-                "🎯 Last Milestone: <b>"
-                + (
-                    "+"
-                    + format(
-                        milestone,
-                        ".0f",
-                    )
-                    + "%"
-                    if milestone > 0
-                    else "None"
-                )
-                + "</b>"
-            ),
+            f"💵 Current Price: <b>{PNLTracker._format_price(current_price)}</b>",
+            "🎯 Last Milestone: <b>" + (f"+{milestone:.0f}%" if milestone > 0 else "None") + "</b>",
         ]
-
+        social_lines = []
+        if twitter_url:
+            social_lines.append(f'<a href="{PNLTracker._escape(twitter_url)}">𝕏 X</a>')
+        if telegram_url:
+            social_lines.append(f'<a href="{PNLTracker._escape(telegram_url)}">Telegram</a>')
+        if website_url:
+            social_lines.append(f'<a href="{PNLTracker._escape(website_url)}">Website</a>')
+        if social_lines:
+            lines.append("🔗 <b>Socials:</b> " + " • ".join(social_lines))
         if drawdown > 0.01:
-            lines.append(
-                f"📉 Drawdown from best: "
-                f"<b>-{drawdown:.1f}%</b>"
-            )
-
-        lines.append(
-            f"📄 <code>{PNLTracker._escape(row.get('address', ''))}</code>"
-        )
-
+            lines.append(f"📉 Drawdown from best: <b>-{drawdown:.1f}%</b>")
+        lines.append(f"📄 <code>{PNLTracker._escape(row.get('address', ''))}</code>")
         if pair_address:
-            lines.append(
-                "🔗 Pair: <code>"
-                + PNLTracker._escape(
-                    pair_address
-                )
-                + "</code>"
-            )
-
+            lines.append(f"🔗 Pair: <code>{PNLTracker._escape(pair_address)}</code>")
         return "\n".join(lines)
 
     def _load_active(
@@ -1257,6 +1157,9 @@ class PNLTracker:
                         address,
                         symbol,
                         pair_address,
+                        entry_market_cap,
+                        current_market_cap,
+                        highest_market_cap,
                         entry_price,
                         current_price,
                         highest_price,
@@ -1278,6 +1181,9 @@ class PNLTracker:
             "address",
             "symbol",
             "pair_address",
+            "entry_market_cap",
+            "current_market_cap",
+            "highest_market_cap",
             "entry_price",
             "current_price",
             "highest_price",
@@ -1296,6 +1202,8 @@ class PNLTracker:
     def _update_row(
         self,
         signal_key: str,
+        current_market_cap: float,
+        highest_market_cap: float,
         current_price: float,
         highest_price: float,
         highest_pnl: float,
@@ -1307,6 +1215,8 @@ class PNLTracker:
                     """
                     UPDATE pnl_tracking
                     SET
+                        current_market_cap=?,
+                        highest_market_cap=?,
                         current_price=?,
                         highest_price=?,
                         highest_pnl=?,
@@ -1315,6 +1225,8 @@ class PNLTracker:
                     WHERE signal_key=?
                     """,
                     (
+                        current_market_cap,
+                        highest_market_cap,
                         current_price,
                         highest_price,
                         highest_pnl,
@@ -1394,6 +1306,17 @@ class PNLTracker:
                 "&gt;",
             )
         )
+
+    @staticmethod
+    def _format_money(value: float) -> str:
+        value = float(value or 0)
+        if value >= 1_000_000_000:
+            return f"${value / 1_000_000_000:.2f}B"
+        if value >= 1_000_000:
+            return f"${value / 1_000_000:.2f}M"
+        if value >= 1_000:
+            return f"${value / 1_000:.1f}K"
+        return f"${value:,.0f}"
 
     @staticmethod
     def _format_price(

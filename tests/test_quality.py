@@ -1,4 +1,5 @@
 import asyncio
+import time
 import unittest
 
 from services.auto_signal import AutoSignalEngine
@@ -29,6 +30,34 @@ class ScannerQualityTests(unittest.TestCase):
             TokenScanner._looks_like_contract_address("bonk")
         )
 
+    def test_scanner_rejects_tokens_older_than_24_hours(self):
+        scanner = TokenScanner.__new__(TokenScanner)
+        scanner.dex = FakeDex()
+        scanner.security = None
+        scanner.gem_detector = None
+
+        old_pair = {
+            "chainId": "solana",
+            "baseToken": {"address": "OLDTOKEN", "name": "Old", "symbol": "OLD"},
+            "liquidity": {"usd": 50000},
+            "volume": {"h24": 20000},
+            "txns": {"h24": {"buys": 70, "sells": 30}},
+            "marketCap": 100000,
+            "priceChange": {"h24": 2},
+            "pairCreatedAt": (time.time() - 25 * 60 * 60) * 1000,
+        }
+
+        async def discovery(_):
+            return [old_pair]
+
+        scanner.dex.discover_solana = discovery
+        scanner.security = type("Security", (), {"check": lambda self, token: {}})()
+        scanner.gem_detector = type("Gem", (), {"analyze": lambda self, token: {}})()
+
+        results = asyncio.run(scanner.scan("sol"))
+        self.assertEqual(results, [])
+        self.assertEqual(scanner.last_scan_stats["age_rejected"], 1)
+
     def test_scanner_keeps_best_pool_for_same_token(self):
         scanner = TokenScanner.__new__(TokenScanner)
         scanner.dex = FakeDex()
@@ -44,6 +73,7 @@ class ScannerQualityTests(unittest.TestCase):
                 "txns": {"h24": {"buys": 15, "sells": 15}},
                 "marketCap": 50000,
                 "priceChange": {"h24": 1},
+                "pairCreatedAt": (time.time() - 2 * 60 * 60) * 1000,
             },
             {
                 "chainId": "solana",
@@ -53,6 +83,7 @@ class ScannerQualityTests(unittest.TestCase):
                 "txns": {"h24": {"buys": 70, "sells": 30}},
                 "marketCap": 100000,
                 "priceChange": {"h24": 2},
+                "pairCreatedAt": (time.time() - 2 * 60 * 60) * 1000,
             },
         ]
 

@@ -68,7 +68,7 @@ class AutoSignalEngine:
 
     DEFAULT_COOLDOWN = 3600
 
-    DEFAULT_MAX_SIGNALS_PER_SCAN = 3
+    DEFAULT_MAX_SIGNALS_PER_SCAN = 8
 
     # Keep multi-chain delivery fair. A chain may contribute up to
     # this many signals before the remaining global slots are filled
@@ -959,10 +959,14 @@ class AutoSignalEngine:
                 if not signal_key or signal_key in selected_keys:
                     continue
 
+                chain = str(token.get("chain", "") or "").lower().strip()
+                count = chain_counts.get(chain, 0)
+                if count >= self.max_signals_per_chain:
+                    continue
+
                 selected.append((ranking, token))
                 selected_keys.add(signal_key)
-                chain = str(token.get("chain", "") or "").lower().strip()
-                chain_counts[chain] = chain_counts.get(chain, 0) + 1
+                chain_counts[chain] = count + 1
 
         return selected, chain_counts
 
@@ -2300,7 +2304,7 @@ async def test_engine():
         chat_id="TEST",
         interval=60,
         cooldown=3600,
-        max_signals_per_scan=3,
+        max_signals_per_scan=8,
     )
 
     await engine.scan_once()

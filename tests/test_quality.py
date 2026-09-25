@@ -30,7 +30,7 @@ class ScannerQualityTests(unittest.TestCase):
             TokenScanner._looks_like_contract_address("bonk")
         )
 
-    def test_scanner_rejects_tokens_older_than_24_hours(self):
+    def test_scanner_rejects_tokens_older_than_48_hours(self):
         scanner = TokenScanner.__new__(TokenScanner)
         scanner.dex = FakeDex()
         scanner.security = None
@@ -44,7 +44,7 @@ class ScannerQualityTests(unittest.TestCase):
             "txns": {"h24": {"buys": 70, "sells": 30}},
             "marketCap": 100000,
             "priceChange": {"h24": 2},
-            "pairCreatedAt": (time.time() - 25 * 60 * 60) * 1000,
+            "pairCreatedAt": (time.time() - 49 * 60 * 60) * 1000,
         }
 
         async def discovery(_):
@@ -69,21 +69,27 @@ class ScannerQualityTests(unittest.TestCase):
                 "chainId": "solana",
                 "baseToken": {"address": "TOKEN", "name": "T", "symbol": "T"},
                 "liquidity": {"usd": 12000},
-                "volume": {"h24": 5000},
-                "txns": {"h24": {"buys": 15, "sells": 15}},
-                "marketCap": 50000,
+                "volume": {"h6": 10000, "h24": 15000},
+                "txns": {
+                    "h1": {"buys": 80, "sells": 70},
+                    "h24": {"buys": 15, "sells": 15},
+                },
+                "marketCap": 150000,
                 "priceChange": {"h24": 1},
-                "pairCreatedAt": (time.time() - 2 * 60 * 60) * 1000,
+                "pairCreatedAt": (time.time() - 6 * 60 * 60) * 1000,
             },
             {
                 "chainId": "solana",
                 "baseToken": {"address": "TOKEN", "name": "T", "symbol": "T"},
                 "liquidity": {"usd": 50000},
-                "volume": {"h24": 20000},
-                "txns": {"h24": {"buys": 70, "sells": 30}},
-                "marketCap": 100000,
+                "volume": {"h6": 30000, "h24": 50000},
+                "txns": {
+                    "h1": {"buys": 80, "sells": 70},
+                    "h24": {"buys": 70, "sells": 30},
+                },
+                "marketCap": 150000,
                 "priceChange": {"h24": 2},
-                "pairCreatedAt": (time.time() - 2 * 60 * 60) * 1000,
+                "pairCreatedAt": (time.time() - 6 * 60 * 60) * 1000,
             },
         ]
 
@@ -138,7 +144,12 @@ class ScannerQualityTests(unittest.TestCase):
             result = asyncio.run(scanner.scan("solana"))
             self.assertEqual(len(result), 1)
             self.assertEqual(result[0]["liquidity"], 50000)
-            self.assertEqual(result[0]["volume24h"], 20000)
+            self.assertEqual(result[0]["volume24h"], 50000)
+            # V10: the public signal field must be the final gated result,
+            # never the intermediate AI classifier.
+            self.assertEqual(result[0]["signal"], result[0]["final_signal"])
+            self.assertEqual(result[0]["ai_signal"], "BUY")
+            self.assertEqual(result[0]["signal_source"], "final_signal_engine")
         finally:
             scanner_module.AIScoring.calculate = original_ai
             scanner_module.FinalSignalEngine.evaluate = original_final

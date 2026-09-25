@@ -24,4 +24,4 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# V8.7: /autostatus is registered in bot.py for live auto-signal diagnostics.
+# V10: /autostatus is registered in bot.py for live auto-signal diagnostics.

@@ -1,5 +1,5 @@
 """
-SALIM SAUKI DATA V8.6
+SALIM SAUKI DATA V10
 SAFE API HEALTH CHECK
 
 Run:
@@ -75,7 +75,7 @@ def rpc_test(name, url, method, params=None, timeout=12):
 
 def main():
     print("=" * 60)
-    print("SALIM SAUKI DATA — V8.6 API HEALTH CHECK")
+    print("SALIM SAUKI DATA — V10 API HEALTH CHECK")
     print("=" * 60)
 
     results = {}
@@ -137,14 +137,17 @@ def main():
 
     # Helius
     helius_key = os.getenv("HELIUS_API_KEY", "").strip()
-    if helius_key:
+    # Helius is optional when the configured Solana RPCs are healthy.
+    # Treat the common placeholder as NOT CONFIGURED rather than a failed
+    # production dependency. Never print the key.
+    if helius_key and helius_key != "YOUR_HELIUS_API_KEY":
         results["Helius"] = rpc_test(
             "Helius",
             f"https://mainnet.helius-rpc.com/?api-key={helius_key}",
             "getHealth",
         )
     else:
-        print("🟡 Helius: API KEY NOT FOUND")
+        print("🟡 Helius: NOT CONFIGURED (optional)")
 
     # Base
     base_urls = []

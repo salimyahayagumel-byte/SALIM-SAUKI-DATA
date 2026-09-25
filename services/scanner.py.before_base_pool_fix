@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Tuple
 from services.dexscreener import DexScreener
 from services.security import SecurityChecker
 from services.final_signal import FinalSignalEngine
+
 from ai.scoring import AIScoring
 from ai.gem_detector import GemDetector
 from ai.recommendation import RecommendationEngine
@@ -46,7 +47,7 @@ class TokenScanner:
     SOLANA_MIN_VOLUME_6H = 2_000
     SOLANA_MIN_TXNS_1H = 10
 
-    # Base / EVM discovery filters.
+    # Relaxed early discovery: Solana + Base / Robinhood / Arc.
     # Security hard-blocks remain downstream and are NOT weakened.
     BASE_MIN_MARKETCAP = 10_000
     BASE_MAX_MARKETCAP = 1_000_000
@@ -79,18 +80,19 @@ class TokenScanner:
 
     @classmethod
     def _looks_like_contract_address(cls, value: Any) -> bool:
-        """Return True when a query looks like a real token address."""
+        """Return True when a query looks like a real token address.
 
+        This prevents `/analyze <contract>` from being treated as a text
+        search. Exact addresses should be resolved through DexScreener's
+        token endpoint first, then pass through the normal scoring pipeline.
+        """
         text = str(value or "").strip()
-
         if cls.EVM_ADDRESS_RE.fullmatch(text):
             return True
 
-        # Solana base58 public keys are normally 32-44 characters.
-        if 32 <= len(text) <= 44 and re.fullmatch(
-            r"[1-9A-HJ-NP-Za-km-z]+",
-            text,
-        ):
+        # Solana base58 public keys are normally 32-44 characters and do
+        # not contain the ambiguous base58 characters 0, O, I or l.
+        if 32 <= len(text) <= 44 and re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]+", text):
             return True
 
         return False
@@ -118,27 +120,6 @@ class TokenScanner:
 
     BASE_DISCOVERY_QUERIES = [
         "base",
-        "base chain",
-        "base meme",
-        "base ai",
-        "new base",
-        "base launch",
-        "base launchpad",
-        "base fairlaunch",
-        "base community",
-        "base degen",
-        "base pump",
-        "base viral",
-        "base dog",
-        "base cat",
-        "base inu",
-        "base pepe",
-        "base moon",
-        "base token",
-        "base gem",
-        "base microcap",
-        "base smallcap",
-        "base eth",
         "meme",
         "ai",
         "dog",
@@ -147,13 +128,7 @@ class TokenScanner:
         "pepe",
         "moon",
         "degen",
-        "pump",
-        "viral",
         "aerodrome",
-        "brett",
-        "toshi",
-        "virtual",
-        "clanker",
     ]
 
     # =========================================================
@@ -191,10 +166,10 @@ class TokenScanner:
         self.security = SecurityChecker()
 
         self.gem_detector = GemDetector()
-        self.gem_intelligence = GemIntelligence(
-            confirmation_scans=3
-        )
+        self.gem_intelligence = GemIntelligence(confirmation_scans=3)
 
+        # V10 scan diagnostics. These counters explain exactly
+        # where candidates disappear during automatic scanning.
         self.last_scan_stats = {
             "chain": "",
             "raw_pairs": 0,
@@ -210,498 +185,6 @@ class TokenScanner:
         }
 
     # =========================================================
-    # CHAIN QUALITY CONFIG
-    # =========================================================
-
-    @classmethod
-    def _chain_quality_config(
-        cls,
-        chain: str,
-    ) -> Tuple[float, float, float, float, float]:
-        """
-        Return:
-
-        min_marketcap
-        max_marketcap
-        min_liquidity
-        max_liquidity
-        min_volume_6h
-        min_txns_1h
-
-        This helper keeps pool selection and final processing using
-        exactly the same hard market filters.
-        """
-
-        if chain == "solana":
-            return (
-                cls.SOLANA_MIN_MARKETCAP,
-                cls.SOLANA_MAX_MARKETCAP,
-                cls.SOLANA_MIN_LIQUIDITY,
-                cls.SOLANA_MAX_LIQUIDITY,
-                cls.SOLANA_MIN_VOLUME_6H,
-                cls.SOLANA_MIN_TXNS_1H,
-            )
-
-        if chain == "robinhood":
-            return (
-                cls.ROBINHOOD_MIN_MARKETCAP,
-                cls.ROBINHOOD_MAX_MARKETCAP,
-                cls.ROBINHOOD_MIN_LIQUIDITY,
-                cls.ROBINHOOD_MAX_LIQUIDITY,
-                cls.ROBINHOOD_MIN_VOLUME_6H,
-                cls.ROBINHOOD_MIN_TXNS_1H,
-            )
-
-        if chain == "arc":
-            return (
-                cls.ARC_MIN_MARKETCAP,
-                cls.ARC_MAX_MARKETCAP,
-                cls.ARC_MIN_LIQUIDITY,
-                cls.ARC_MAX_LIQUIDITY,
-                cls.ARC_MIN_VOLUME_6H,
-                cls.ARC_MIN_TXNS_1H,
-            )
-
-        return (
-            cls.BASE_MIN_MARKETCAP,
-            cls.BASE_MAX_MARKETCAP,
-            cls.BASE_MIN_LIQUIDITY,
-            cls.BASE_MAX_LIQUIDITY,
-            cls.BASE_MIN_VOLUME_6H,
-            cls.BASE_MIN_TXNS_1H,
-        )
-
-    # =========================================================
-    # PAIR AGE
-    # =========================================================
-
-    @classmethod
-    def _pair_age(
-        cls,
-        pair: Dict[str, Any],
-        chain: str,
-    ) -> Tuple[float, float, bool]:
-        """
-        Return:
-
-        created_seconds
-        age_seconds
-        age_valid
-
-        Invalid/missing pairCreatedAt is never treated as fresh.
-        """
-
-        created_seconds = 0.0
-
-        try:
-            raw_created = pair.get(
-                "pairCreatedAt"
-            )
-
-            created_value = float(
-                raw_created or 0
-            )
-
-            # DexScreener normally supplies milliseconds.
-            if created_value > 10_000_000_000:
-                created_seconds = created_value / 1000.0
-            else:
-                created_seconds = created_value
-
-            age_seconds = (
-                time.time() - created_seconds
-            )
-
-        except (
-            TypeError,
-            ValueError,
-            OverflowError,
-        ):
-            created_seconds = 0.0
-            age_seconds = float("inf")
-
-        min_age = (
-            cls.EVM_MIN_TOKEN_AGE_SECONDS
-            if chain in (
-                "base",
-                "robinhood",
-                "arc",
-            )
-            else cls.MIN_TOKEN_AGE_SECONDS
-        )
-
-        age_valid = (
-            created_seconds > 0
-            and age_seconds >= min_age
-            and age_seconds <= cls.MAX_TOKEN_AGE_SECONDS
-        )
-
-        return (
-            created_seconds,
-            age_seconds,
-            age_valid,
-        )
-
-    # =========================================================
-    # PAIR MARKET SNAPSHOT
-    # =========================================================
-
-    @classmethod
-    def _pair_market_snapshot(
-        cls,
-        pair: Dict[str, Any],
-    ) -> Dict[str, float]:
-        """
-        Extract all market values needed for pool selection.
-
-        The scanner uses this during pool selection so that a fresh
-        Base pool with good market data is not hidden by another pool
-        belonging to the same token.
-        """
-
-        liquidity = pair.get(
-            "liquidity"
-        ) or {}
-
-        volume = pair.get(
-            "volume"
-        ) or {}
-
-        txns = pair.get(
-            "txns"
-        ) or {}
-
-        h24 = txns.get(
-            "h24"
-        ) or {}
-
-        h1 = txns.get(
-            "h1"
-        ) or {}
-
-        marketcap = cls._number(
-            pair.get("marketCap")
-            or pair.get("fdv")
-            or 0
-        )
-
-        liquidity_usd = cls._number(
-            liquidity.get("usd")
-            or 0
-        )
-
-        volume_6h = cls._number(
-            volume.get("h6")
-            or volume.get("h24")
-            or 0
-        )
-
-        buys_24h = cls._number(
-            h24.get("buys")
-            or 0
-        )
-
-        sells_24h = cls._number(
-            h24.get("sells")
-            or 0
-        )
-
-        total_24h = (
-            buys_24h + sells_24h
-        )
-
-        buy_ratio = (
-            buys_24h / total_24h
-            if total_24h > 0
-            else 0.0
-        )
-
-        buys_1h = cls._number(
-            h1.get("buys")
-            or 0
-        )
-
-        sells_1h = cls._number(
-            h1.get("sells")
-            or 0
-        )
-
-        txns_1h = (
-            buys_1h + sells_1h
-        )
-
-        return {
-            "marketcap": marketcap,
-            "liquidity": liquidity_usd,
-            "volume_6h": volume_6h,
-            "txns_1h": txns_1h,
-            "buy_ratio": buy_ratio,
-            "buys_24h": buys_24h,
-            "sells_24h": sells_24h,
-        }
-
-    # =========================================================
-    # PAIR QUALITY
-    # =========================================================
-
-    @classmethod
-    def _pair_quality(
-        cls,
-        pair: Dict[str, Any],
-        chain: str,
-    ) -> Dict[str, Any]:
-        """
-        Determine whether a pool satisfies the scanner's hard
-        market filters.
-
-        IMPORTANT:
-        This does NOT bypass any filter.
-
-        It is only used to choose the strongest valid-age pool
-        when DexScreener returns multiple pools for one token.
-        """
-
-        snapshot = cls._pair_market_snapshot(
-            pair
-        )
-
-        (
-            min_mc,
-            max_mc,
-            min_liq,
-            max_liq,
-            min_vol_6h,
-            min_txns_1h,
-        ) = cls._chain_quality_config(
-            chain
-        )
-
-        marketcap_ok = (
-            min_mc
-            <= snapshot["marketcap"]
-            <= max_mc
-        )
-
-        liquidity_ok = (
-            min_liq
-            <= snapshot["liquidity"]
-            <= max_liq
-        )
-
-        volume_ok = (
-            snapshot["volume_6h"]
-            >= min_vol_6h
-        )
-
-        txns_ok = (
-            snapshot["txns_1h"]
-            >= min_txns_1h
-        )
-
-        buy_ratio_ok = (
-            snapshot["buy_ratio"]
-            >= cls.MIN_BUY_RATIO
-        )
-
-        hard_quality_pass = (
-            marketcap_ok
-            and liquidity_ok
-            and volume_ok
-            and txns_ok
-            and buy_ratio_ok
-        )
-
-        quality_count = sum(
-            [
-                marketcap_ok,
-                liquidity_ok,
-                volume_ok,
-                txns_ok,
-                buy_ratio_ok,
-            ]
-        )
-
-        return {
-            "hard_quality_pass": hard_quality_pass,
-            "quality_count": quality_count,
-            **snapshot,
-        }
-
-    # =========================================================
-    # POOL SELECTION
-    # =========================================================
-
-    @classmethod
-    def _select_best_pools(
-        cls,
-        pairs: List[Dict[str, Any]],
-        chain: str,
-    ) -> Tuple[List[Dict[str, Any]], int]:
-        """
-        Select one useful pool per token.
-
-        OLD PROBLEM:
-        The scanner selected the strongest pool mainly by liquidity.
-        A token could have:
-
-            Pool A = old + high liquidity
-            Pool B = fresh + valid liquidity
-
-        and pool selection could hide Pool B.
-
-        NEW BEHAVIOUR:
-        1. Group all pools by token.
-        2. Prefer fresh 1s-48h pools.
-        3. Among fresh pools, prefer pools that actually satisfy
-           the hard market filters.
-        4. Among equal-quality pools, prefer liquidity/volume/txns.
-        5. If no fresh pool exists, retain the strongest old/missing-age
-           pool only for diagnostics, where the normal age filter will
-           reject it later.
-
-        No safety gate is weakened.
-        """
-
-        grouped: Dict[
-            str,
-            List[Dict[str, Any]]
-        ] = {}
-
-        for pair in pairs:
-
-            if not isinstance(
-                pair,
-                dict,
-            ):
-                continue
-
-            pair_chain = str(
-                pair.get(
-                    "chainId",
-                    "",
-                )
-                or ""
-            ).lower().strip()
-
-            if pair_chain != chain:
-                continue
-
-            base = pair.get(
-                "baseToken"
-            ) or {}
-
-            address = str(
-                base.get(
-                    "address",
-                    "",
-                )
-                or ""
-            ).strip()
-
-            if not address:
-                continue
-
-            grouped.setdefault(
-                address.lower(),
-                []
-            ).append(
-                pair
-            )
-
-        selected = []
-        age_rejected_candidates = 0
-
-        for address, token_pairs in grouped.items():
-
-            fresh_candidates = []
-            old_candidates = []
-
-            for pair in token_pairs:
-
-                _, _, age_valid = cls._pair_age(
-                    pair,
-                    chain,
-                )
-
-                quality = cls._pair_quality(
-                    pair,
-                    chain,
-                )
-
-                if age_valid:
-
-                    # HARD QUALITY PASS gets priority.
-                    #
-                    # This is important for Base because a token
-                    # can have several fresh pools with very different
-                    # liquidity/volume/transaction data.
-                    candidate_key = (
-                        1 if quality["hard_quality_pass"] else 0,
-                        quality["quality_count"],
-                        quality["liquidity"],
-                        quality["volume_6h"],
-                        quality["txns_1h"],
-                        quality["buy_ratio"],
-                    )
-
-                    fresh_candidates.append(
-                        (
-                            candidate_key,
-                            pair,
-                        )
-                    )
-
-                else:
-
-                    # Old/missing-age pools are kept only as a fallback
-                    # for diagnostics. The processing stage will reject
-                    # them by the normal age gate.
-                    old_key = (
-                        quality["hard_quality_pass"],
-                        quality["quality_count"],
-                        quality["liquidity"],
-                        quality["volume_6h"],
-                        quality["txns_1h"],
-                        quality["buy_ratio"],
-                    )
-
-                    old_candidates.append(
-                        (
-                            old_key,
-                            pair,
-                        )
-                    )
-
-            if fresh_candidates:
-
-                fresh_candidates.sort(
-                    key=lambda item: item[0],
-                    reverse=True,
-                )
-
-                selected.append(
-                    fresh_candidates[0][1]
-                )
-
-            elif old_candidates:
-
-                old_candidates.sort(
-                    key=lambda item: item[0],
-                    reverse=True,
-                )
-
-                selected.append(
-                    old_candidates[0][1]
-                )
-
-                age_rejected_candidates += 1
-
-        return (
-            selected,
-            age_rejected_candidates,
-        )
-
-    # =========================================================
     # SCAN
     # =========================================================
 
@@ -709,14 +192,8 @@ class TokenScanner:
         self,
         query="sol",
     ):
-
-        if not hasattr(
-            self,
-            "gem_intelligence",
-        ):
-            self.gem_intelligence = GemIntelligence(
-                confirmation_scans=3
-            )
+        if not hasattr(self, "gem_intelligence"):
+            self.gem_intelligence = GemIntelligence(confirmation_scans=3)
 
         # -----------------------------------------------------
         # DETECT CHAIN
@@ -724,6 +201,7 @@ class TokenScanner:
 
         requested_chain = "solana"
 
+        # Reset per-scan diagnostics.
         self.last_scan_stats = {
             "chain": requested_chain,
             "raw_pairs": 0,
@@ -778,80 +256,45 @@ class TokenScanner:
             ):
 
                 requested_chain = "solana"
+
                 query = None
 
-        self.last_scan_stats[
-            "chain"
-        ] = requested_chain
+        self.last_scan_stats["chain"] = requested_chain
 
         # -----------------------------------------------------
         # EXACT ADDRESS LOOKUP
         # -----------------------------------------------------
 
         if query:
-            query = str(
-                query
-            ).strip()
 
-        if (
-            query
-            and self._looks_like_contract_address(
-                query
-            )
-        ):
+            query = str(query).strip()
+
+        if query and self._looks_like_contract_address(query):
 
             print(
                 f"🎯 Exact address lookup: {query}"
             )
 
             try:
-
-                pairs = await self.dex.tokens(
-                    [query]
-                )
-
+                pairs = await self.dex.tokens([query])
             except Exception as exc:
-
                 print(
                     f"❌ Exact address lookup failed: {exc}"
                 )
-
                 return []
 
             pairs = [
                 pair
                 for pair in pairs
-                if (
-                    isinstance(pair, dict)
-                    and str(
-                        pair.get(
-                            "chainId",
-                            "",
-                        )
-                    ).lower().strip()
-                    == requested_chain
-                    and str(
-                        (
-                            pair.get(
-                                "baseToken"
-                            )
-                            or {}
-                        ).get(
-                            "address",
-                            "",
-                        )
-                    ).strip().lower()
-                    == query.lower()
-                )
+                if isinstance(pair, dict)
+                and str(pair.get("chainId", "")).lower().strip() == requested_chain
+                and str((pair.get("baseToken") or {}).get("address", "")).strip().lower() == query.lower()
             ]
 
             if not pairs:
-
                 print(
-                    f"❌ Address not found on "
-                    f"{requested_chain}: {query}"
+                    f"❌ Address not found on {requested_chain}: {query}"
                 )
-
                 return []
 
         else:
@@ -860,11 +303,7 @@ class TokenScanner:
             # DISCOVERY QUERIES
             # -----------------------------------------------------
 
-            if requested_chain in (
-                "base",
-                "robinhood",
-                "arc",
-            ):
+            if requested_chain in ("base", "robinhood", "arc"):
 
                 queries = list(
                     self.BASE_DISCOVERY_QUERIES
@@ -883,11 +322,9 @@ class TokenScanner:
             if query:
 
                 if (
-                    query.lower()
-                    not in [
-                        str(item).lower()
-                        for item in queries
-                    ]
+                    query
+                    and query.lower()
+                    not in [str(item).lower() for item in queries]
                 ):
 
                     queries.insert(
@@ -902,13 +339,8 @@ class TokenScanner:
             try:
 
                 if requested_chain == "solana":
-
-                    pairs = await self.dex.discover_solana(
-                        queries
-                    )
-
+                    pairs = await self.dex.discover_solana(queries)
                 else:
-
                     pairs = await self.dex.discover_chain(
                         requested_chain,
                         queries,
@@ -917,58 +349,124 @@ class TokenScanner:
             except Exception as exc:
 
                 print(
-                    f"❌ "
-                    f"{self.SUPPORTED_CHAINS.get(
-                        requested_chain,
-                        requested_chain,
-                    )} "
+                    f"❌ {self.SUPPORTED_CHAINS.get(requested_chain, requested_chain)} "
                     f"discovery failed: {exc}"
                 )
 
                 return []
 
-        self.last_scan_stats[
-            "raw_pairs"
-        ] = len(pairs)
+        self.last_scan_stats["raw_pairs"] = len(pairs)
 
         print(
             f"📊 Raw "
-            f"{self.SUPPORTED_CHAINS.get(
-                requested_chain,
-                requested_chain,
-            )} candidates: "
+            f"{self.SUPPORTED_CHAINS.get(requested_chain, requested_chain)} "
+            f"candidates: "
             f"{len(pairs)}"
         )
 
         results = []
 
         # =====================================================
-        # MULTI-POOL SELECTION
+        # SELECT BEST POOL PER TOKEN
+        #
+        # DexScreener can return multiple pools for the same
+        # token. Processing the first pool is dangerous because
+        # that pool may have weaker liquidity/volume than another
+        # pool for the same token. Pick the strongest available
+        # market-data pair first, then run the expensive security
+        # and scoring pipeline only once per token.
         # =====================================================
 
-        selected_pairs, fallback_age_rejected = (
-            self._select_best_pools(
-                pairs,
-                requested_chain,
-            )
-        )
+        best_pairs = {}
 
-        self.last_scan_stats[
-            "unique_tokens"
-        ] = len(selected_pairs)
+        for pair in pairs:
+
+            if not isinstance(pair, dict):
+                continue
+
+            chain = str(
+                pair.get('chainId', '') or ''
+            ).lower().strip()
+
+            if chain != requested_chain:
+                continue
+
+            base = pair.get('baseToken') or {}
+            address = str(
+                base.get('address', '') or ''
+            ).strip()
+
+            if not address:
+                continue
+
+            liquidity = pair.get('liquidity') or {}
+            volume = pair.get('volume') or {}
+            txns = pair.get('txns') or {}
+            h24 = txns.get('h24') or {}
+            h1 = txns.get('h1') or {}
+
+            liq = self._number(liquidity.get('usd') or 0)
+            vol = self._number(volume.get('h6') or volume.get('h24') or 0)
+            buys = self._number(h24.get('buys') or 0)
+            sells = self._number(h24.get('sells') or 0)
+            tx_count = self._number(h1.get('buys') or 0) + self._number(h1.get('sells') or 0)
+
+            # Prefer pools whose pair age is within the scanner's
+            # allowed 1-second -> 48-hour window. This prevents an
+            # old high-liquidity pool from hiding a valid new pool
+            # for the same token.
+            pair_created = pair.get("pairCreatedAt")
+
+            try:
+                created_value = float(pair_created or 0)
+                created_seconds = (
+                    created_value / 1000.0
+                    if created_value > 10_000_000_000
+                    else created_value
+                )
+                pair_age_seconds = time.time() - created_seconds
+            except (TypeError, ValueError, OverflowError):
+                created_seconds = 0
+                pair_age_seconds = float("inf")
+
+            min_age_seconds = (
+                self.EVM_MIN_TOKEN_AGE_SECONDS
+                if requested_chain in ("base", "robinhood", "arc")
+                else self.MIN_TOKEN_AGE_SECONDS
+            )
+
+            pair_age_valid = (
+                created_seconds > 0
+                and pair_age_seconds >= min_age_seconds
+                and pair_age_seconds <= self.MAX_TOKEN_AGE_SECONDS
+            )
+
+            # Valid-age pools always outrank invalid-age pools.
+            # Among pools with the same age-validity, preserve the
+            # existing liquidity -> volume -> transaction selection.
+            candidate_key = (
+                1 if pair_age_valid else 0,
+                liq,
+                vol,
+                tx_count,
+            )
+
+            current = best_pairs.get(address)
+            if current is None or candidate_key > current[0]:
+                best_pairs[address] = (candidate_key, pair)
+
+
+        selected_pairs = [
+            item[1]
+            for item in best_pairs.values()
+        ]
+
+        self.last_scan_stats["unique_tokens"] = len(selected_pairs)
 
         print(
-            f"📌 {requested_chain.upper()} unique tokens "
-            f"after multi-pool selection: "
+            f"📌 {requested_chain.upper()} unique tokens after pool selection: "
             f"{len(selected_pairs)}"
         )
-
-        if fallback_age_rejected:
-            print(
-                f"⏱️ {requested_chain.upper()} tokens with "
-                f"no valid 1s-48h pool: "
-                f"{fallback_age_rejected}"
-            )
 
         # =====================================================
         # PROCESS SELECTED PAIRS
@@ -980,6 +478,7 @@ class TokenScanner:
                 pair,
                 dict,
             ):
+
                 continue
 
             chain = str(
@@ -987,10 +486,10 @@ class TokenScanner:
                     "chainId",
                     "",
                 )
-                or ""
-            ).lower().strip()
+            ).lower()
 
             if chain != requested_chain:
+
                 continue
 
             base = pair.get(
@@ -1030,6 +529,7 @@ class TokenScanner:
             ).strip()
 
             if not address:
+
                 continue
 
             # =================================================
@@ -1089,177 +589,90 @@ class TokenScanner:
             # =================================================
             # HARD TOKEN AGE FILTER
             # =================================================
-
-            pair_created = pair.get(
-                "pairCreatedAt"
-            )
-
-            # IMPORTANT:
-            # Initialize this BEFORE try so malformed/missing
-            # pairCreatedAt can never create an undefined variable.
-            created_seconds = 0.0
-
+            # User requirement: only tokens/pairs from 1 second to 48 hours
+            # old may enter the scanner pipeline.
+            pair_created = pair.get("pairCreatedAt")
             try:
-
-                created_value = float(
-                    pair_created or 0
-                )
-
-                if created_value > 10_000_000_000:
-                    created_seconds = (
-                        created_value / 1000.0
-                    )
-                else:
-                    created_seconds = created_value
-
-                token_age_seconds = (
-                    time.time()
-                    - created_seconds
-                )
-
-            except (
-                TypeError,
-                ValueError,
-                OverflowError,
-            ):
-
-                created_seconds = 0.0
-                token_age_seconds = float(
-                    "inf"
-                )
-
-            min_age_seconds = (
-                self.EVM_MIN_TOKEN_AGE_SECONDS
-                if requested_chain in (
-                    "base",
-                    "robinhood",
-                    "arc",
-                )
-                else self.MIN_TOKEN_AGE_SECONDS
-            )
+                created_ms = float(pair_created or 0)
+                created_seconds = created_ms / 1000.0 if created_ms > 10_000_000_000 else created_ms
+                token_age_seconds = time.time() - created_seconds
+            except (TypeError, ValueError, OverflowError):
+                token_age_seconds = float("inf")
 
             if (
                 created_seconds <= 0
                 or token_age_seconds < 0
-                or token_age_seconds < min_age_seconds
+                or token_age_seconds < (
+                    self.EVM_MIN_TOKEN_AGE_SECONDS
+                    if requested_chain in ("base", "robinhood", "arc")
+                    else self.MIN_TOKEN_AGE_SECONDS
+                )
                 or token_age_seconds > self.MAX_TOKEN_AGE_SECONDS
             ):
-
-                self.last_scan_stats[
-                    "age_rejected"
-                ] += 1
-
+                self.last_scan_stats["age_rejected"] += 1
                 continue
 
             # =================================================
-            # CHAIN-SPECIFIC QUALITY FILTER
-            # =================================================
+            # V10 CHAIN-SPECIFIC QUALITY FILTER
 
-            (
-                min_mc,
-                max_mc,
-                min_liq,
-                max_liq,
-                min_vol_6h,
-                min_txns_1h,
-            ) = self._chain_quality_config(
-                requested_chain
-            )
+            if requested_chain == "solana":
+                min_mc, max_mc = self.SOLANA_MIN_MARKETCAP, self.SOLANA_MAX_MARKETCAP
+                min_liq, max_liq = self.SOLANA_MIN_LIQUIDITY, self.SOLANA_MAX_LIQUIDITY
+                min_vol_6h = self.SOLANA_MIN_VOLUME_6H
+                min_txns_1h = self.SOLANA_MIN_TXNS_1H
+            elif requested_chain == "robinhood":
+                min_mc, max_mc = self.ROBINHOOD_MIN_MARKETCAP, self.ROBINHOOD_MAX_MARKETCAP
+                min_liq, max_liq = self.ROBINHOOD_MIN_LIQUIDITY, self.ROBINHOOD_MAX_LIQUIDITY
+                min_vol_6h = self.ROBINHOOD_MIN_VOLUME_6H
+                min_txns_1h = self.ROBINHOOD_MIN_TXNS_1H
+            elif requested_chain == "arc":
+                min_mc, max_mc = self.ARC_MIN_MARKETCAP, self.ARC_MAX_MARKETCAP
+                min_liq, max_liq = self.ARC_MIN_LIQUIDITY, self.ARC_MAX_LIQUIDITY
+                min_vol_6h = self.ARC_MIN_VOLUME_6H
+                min_txns_1h = self.ARC_MIN_TXNS_1H
+            else:
+                min_mc, max_mc = self.BASE_MIN_MARKETCAP, self.BASE_MAX_MARKETCAP
+                min_liq, max_liq = self.BASE_MIN_LIQUIDITY, self.BASE_MAX_LIQUIDITY
+                min_vol_6h = self.BASE_MIN_VOLUME_6H
+                min_txns_1h = self.BASE_MIN_TXNS_1H
 
-            volume_6h = self._number(
-                volume.get(
-                    "h6"
-                )
-                or 0
-            )
+            volume_6h = self._number(volume.get("h6") or 0)
+            txns_1h = self._number((txns.get("h1") or {}).get("buys") or 0) + self._number((txns.get("h1") or {}).get("sells") or 0)
 
-            h1 = txns.get(
-                "h1"
-            ) or {}
-
-            txns_1h = (
-                self._number(
-                    h1.get(
-                        "buys"
-                    )
-                    or 0
-                )
-                + self._number(
-                    h1.get(
-                        "sells"
-                    )
-                    or 0
-                )
-            )
-
-            # -------------------------------------------------
-            # MARKET CAP
-            # -------------------------------------------------
-
-            if (
-                marketcap < min_mc
-                or marketcap > max_mc
-            ):
-
-                self.last_scan_stats[
-                    "marketcap_rejected"
-                ] += 1
-
+            if marketcap < min_mc or marketcap > max_mc:
+                self.last_scan_stats["marketcap_rejected"] += 1
                 continue
 
-            # -------------------------------------------------
-            # LIQUIDITY
-            # -------------------------------------------------
-
-            if (
-                liquidity_usd < min_liq
-                or liquidity_usd > max_liq
-            ):
-
-                self.last_scan_stats[
-                    "liquidity_rejected"
-                ] += 1
-
+            if liquidity_usd < min_liq or liquidity_usd > max_liq:
+                self.last_scan_stats["liquidity_rejected"] += 1
                 continue
-
-            # -------------------------------------------------
-            # VOLUME
-            # -------------------------------------------------
 
             if volume_6h < min_vol_6h:
-
-                self.last_scan_stats[
-                    "volume_rejected"
-                ] += 1
-
+                self.last_scan_stats["volume_rejected"] += 1
                 continue
-
-            # -------------------------------------------------
-            # TRANSACTIONS
-            # -------------------------------------------------
 
             if txns_1h < min_txns_1h:
-
-                self.last_scan_stats[
-                    "txns_rejected"
-                ] += 1
-
+                self.last_scan_stats["txns_rejected"] += 1
                 continue
 
-            # -------------------------------------------------
-            # BUY RATIO
-            # -------------------------------------------------
+            if (
+                buy_ratio
+                < self.MIN_BUY_RATIO
+            ):
 
-            if buy_ratio < self.MIN_BUY_RATIO:
-
-                self.last_scan_stats[
-                    "buy_ratio_rejected"
-                ] += 1
-
+                self.last_scan_stats["buy_ratio_rejected"] += 1
                 continue
 
             # =================================================
             # DEXSCREENER INFO
+            #
+            # This contains:
+            #
+            # info.imageUrl
+            # info.header
+            # info.openGraph
+            # info.websites
+            # info.socials
             # =================================================
 
             info = pair.get(
@@ -1270,6 +683,7 @@ class TokenScanner:
                 info,
                 dict,
             ):
+
                 info = {}
 
             # =================================================
@@ -1309,16 +723,10 @@ class TokenScanner:
                     volume_24h,
 
                 "volume6h":
-                    self._number(
-                        volume.get(
-                            "h6"
-                        )
-                        or 0
-                    ),
+                    self._number(volume.get("h6") or 0),
 
-                "txns1h": int(
-                    txns_1h
-                ),
+                "txns1h":
+                    int(self._number((txns.get("h1") or {}).get("buys") or 0) + self._number((txns.get("h1") or {}).get("sells") or 0)),
 
                 "marketcap":
                     marketcap,
@@ -1339,9 +747,6 @@ class TokenScanner:
                     pair.get(
                         "pairCreatedAt"
                     ),
-
-                "pair_age_seconds":
-                    token_age_seconds,
 
                 "buys24h": int(
                     buys
@@ -1366,73 +771,13 @@ class TokenScanner:
                         or 0
                     ),
 
-                "price_change_5m":
-                    self._number(
-                        price_change.get(
-                            "m5"
-                        )
-                        or 0
-                    ),
-
-                "price_change_15m":
-                    self._number(
-                        price_change.get(
-                            "m15"
-                        )
-                        or 0
-                    ),
-
-                "price_change_1h":
-                    self._number(
-                        price_change.get(
-                            "h1"
-                        )
-                        or 0
-                    ),
-
-                "volume_5m":
-                    self._number(
-                        volume.get(
-                            "m5"
-                        )
-                        or 0
-                    ),
-
-                "volume_1h":
-                    self._number(
-                        volume.get(
-                            "h1"
-                        )
-                        or 0
-                    ),
-
-                "buys5m": int(
-                    self._number(
-                        (
-                            txns.get(
-                                "m5"
-                            )
-                            or {}
-                        ).get(
-                            "buys"
-                        )
-                        or 0
-                    )
-                ),
-
-                "sells5m": int(
-                    self._number(
-                        (
-                            txns.get(
-                                "m5"
-                            )
-                            or {}
-                        ).get(
-                            "sells"
-                        )
-                        or 0
-                    )
-                ),
+                "price_change_5m": self._number(price_change.get("m5") or 0),
+                "price_change_15m": self._number(price_change.get("m15") or 0),
+                "price_change_1h": self._number(price_change.get("h1") or 0),
+                "volume_5m": self._number(volume.get("m5") or 0),
+                "volume_1h": self._number(volume.get("h1") or 0),
+                "buys5m": int(self._number((txns.get("m5") or {}).get("buys") or 0)),
+                "sells5m": int(self._number((txns.get("m5") or {}).get("sells") or 0)),
 
                 "url": pair.get(
                     "url"
@@ -1481,9 +826,7 @@ class TokenScanner:
             # AI SCORING
             # =================================================
 
-            self.last_scan_stats[
-                "scored"
-            ] += 1
+            self.last_scan_stats["scored"] += 1
 
             try:
 
@@ -1514,6 +857,10 @@ class TokenScanner:
                 "N/A",
             )
 
+            # V10: keep AI classification separate from the canonical
+            # final signal. The old code stored the AI label in
+            # token["signal"], which could expose misleading labels such
+            # as "BUY WATCH" even when the final security gate rejected it.
             token["ai_signal"] = ai.get(
                 "signal",
                 "🟡 NEUTRAL",
@@ -1547,9 +894,7 @@ class TokenScanner:
                     "liquidity_ratio": 0,
                     "volume_ratio": 0,
                     "buy_ratio": buy_ratio,
-                    "total_txns": int(
-                        total_txns
-                    ),
+                    "total_txns": int(total_txns),
                 }
 
             token["gem_score"] = gem.get(
@@ -1597,9 +942,7 @@ class TokenScanner:
 
             token["total_txns"] = gem.get(
                 "total_txns",
-                int(
-                    total_txns
-                ),
+                int(total_txns),
             )
 
             # =================================================
@@ -1695,91 +1038,60 @@ class TokenScanner:
                 [],
             )
 
-            # =================================================
-            # BASE / EVM SECURITY ENRICHMENT
-            # =================================================
-
+            # Base/EVM security enrichment. These fields are harmless
+            # on Solana and let the final signal/dashboard expose the
+            # stronger Honeypot.is checks when the token is on Base.
             token["honeypot_available"] = security.get(
                 "honeypot_available",
                 False,
             )
-
             token["honeypot_risk"] = security.get(
                 "honeypot_risk"
             )
-
             token["honeypot_risk_level"] = security.get(
                 "honeypot_risk_level"
             )
-
             token["honeypot_detected"] = security.get(
                 "honeypot_detected"
             )
-
             token["buy_tax"] = security.get(
                 "buy_tax"
             )
-
             token["sell_tax"] = security.get(
                 "sell_tax"
             )
-
             token["contract_open_source"] = security.get(
                 "contract_open_source"
             )
-
             token["proxy_calls"] = security.get(
                 "proxy_calls"
             )
 
             # =================================================
-            # GEM INTELLIGENCE
+            # V9 GEM INTELLIGENCE
             # =================================================
-
             try:
-
-                intelligence = (
-                    self.gem_intelligence.analyze(
-                        token
-                    )
-                )
-
+                intelligence = self.gem_intelligence.analyze(token)
             except Exception as exc:
-
-                print(
-                    f"Gem intelligence error "
-                    f"for {address}: {exc}"
-                )
-
+                print(f"Gem intelligence error for {address}: {exc}")
                 intelligence = {
                     "gem_score_2": 0,
                     "confirmed_gem": False,
                     "signal_stage": "ERROR",
                 }
 
-            token.update(
-                intelligence
-            )
+            token.update(intelligence)
 
             if "gem_score_2" in intelligence:
-
-                token["gem_score_legacy"] = (
-                    token.get(
-                        "gem_score",
-                        0,
-                    )
-                )
-
-                token["gem_score"] = (
-                    intelligence[
-                        "gem_score_2"
-                    ]
-                )
+                token["gem_score_legacy"] = token.get("gem_score", 0)
+                token["gem_score"] = intelligence["gem_score_2"]
 
             # =================================================
             # DATA / SECURITY CONFIDENCE
             # =================================================
-
+            # A high score must never be confused with complete evidence.
+            # Keep a separate quality indicator so downstream UI/AI layers
+            # can distinguish strong market data from incomplete data.
             required_market_fields = (
                 marketcap > 0
                 and liquidity_usd > 0
@@ -1789,65 +1101,30 @@ class TokenScanner:
 
             security_evidence = 0
 
-            if token.get(
-                "security_should_pass"
-            ):
+            if token.get("security_should_pass"):
                 security_evidence += 1
 
-            if (
-                chain == "base"
-                and token.get(
-                    "honeypot_available"
-                )
-            ):
+            if chain == "base" and token.get("honeypot_available"):
                 security_evidence += 2
-
-            elif (
-                chain in (
-                    "robinhood",
-                    "arc",
-                )
-                and token.get(
-                    "security_should_pass"
-                )
-            ):
+            elif chain in ("robinhood", "arc") and token.get("security_should_pass"):
                 security_evidence += 1
 
             if chain == "solana":
-
-                if token.get(
-                    "mint_authority"
-                ) is not None:
+                if token.get("mint_authority") is not None:
                     security_evidence += 1
-
-                if token.get(
-                    "freeze_authority"
-                ) is not None:
+                if token.get("freeze_authority") is not None:
                     security_evidence += 1
 
             if security_evidence >= 3:
-
                 security_confidence = "HIGH"
-
             elif security_evidence >= 1:
-
                 security_confidence = "MEDIUM"
-
             else:
-
                 security_confidence = "LOW"
 
-            token["market_data_complete"] = (
-                required_market_fields
-            )
-
-            token["security_evidence_score"] = (
-                security_evidence
-            )
-
-            token["security_confidence"] = (
-                security_confidence
-            )
+            token["market_data_complete"] = required_market_fields
+            token["security_evidence_score"] = security_evidence
+            token["security_confidence"] = security_confidence
 
             # =================================================
             # FINAL SIGNAL
@@ -1855,11 +1132,9 @@ class TokenScanner:
 
             try:
 
-                final = (
-                    FinalSignalEngine.evaluate(
-                        token,
-                        security,
-                    )
+                final = FinalSignalEngine.evaluate(
+                    token,
+                    security,
                 )
 
             except Exception as exc:
@@ -1907,17 +1182,12 @@ class TokenScanner:
                 ),
             )
 
-            # =================================================
-            # CANONICAL SIGNAL
-            # =================================================
-
-            token["signal"] = (
-                token["final_signal"]
-            )
-
-            token["signal_source"] = (
-                "final_signal_engine"
-            )
+            # V10 canonical signal: every downstream UI/consumer that uses
+            # token["signal"] now receives the FINAL gated decision, never
+            # an intermediate AI/GEM classifier. Intermediate labels live in
+            # ai_signal and gem_signal.
+            token["signal"] = token["final_signal"]
+            token["signal_source"] = "final_signal_engine"
 
             token["final_reasons"] = final.get(
                 "reasons",
@@ -2091,9 +1361,7 @@ class TokenScanner:
                 token
             )
 
-            self.last_scan_stats[
-                "returned"
-            ] = len(results)
+            self.last_scan_stats["returned"] = len(results)
 
         # =====================================================
         # SMART RANKING
@@ -2291,33 +1559,10 @@ class TokenScanner:
             )
         )
 
-        v9_gem = cls._number(
-            token.get(
-                "gem_score_2",
-                gem_score,
-            )
-        )
-
-        momentum = cls._number(
-            token.get(
-                "momentum_score",
-                0,
-            )
-        )
-
-        early = cls._number(
-            token.get(
-                "early_entry_score",
-                0,
-            )
-        )
-
-        confirmation = cls._number(
-            token.get(
-                "confirmation_count",
-                0,
-            )
-        )
+        v9_gem = cls._number(token.get("gem_score_2", gem_score))
+        momentum = cls._number(token.get("momentum_score", 0))
+        early = cls._number(token.get("early_entry_score", 0))
+        confirmation = cls._number(token.get("confirmation_count", 0))
 
         return (
             signal_priority,
@@ -2349,6 +1594,7 @@ class TokenScanner:
         try:
 
             if value is None:
+
                 return default
 
             return float(

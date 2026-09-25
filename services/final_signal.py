@@ -1,7 +1,7 @@
 class FinalSignalEngine:
 
     # =========================================
-    # V5 SIGNAL THRESHOLDS
+    # V10 FINAL SIGNAL THRESHOLDS
     # =========================================
 
     STRONG_GEM_SCORE = 75
@@ -17,12 +17,12 @@ class FinalSignalEngine:
     MIN_AI_SIGNAL = 60
 
     # Security
-    MIN_SECURITY_SCORE = 70
+    MIN_SECURITY_SCORE = 69
 
     # Market quality filters
-    MIN_LIQUIDITY = 10_000
+    MIN_LIQUIDITY = 30_000
     MIN_MARKET_CAP = 10_000
-    MAX_MARKET_CAP = 5_000_000
+    MAX_MARKET_CAP = 1_000_000
 
     # Buy pressure
     MIN_BUY_RATIO = 0.50
@@ -32,7 +32,7 @@ class FinalSignalEngine:
 
     # Activity
     MIN_VOLUME_RATIO = 0.03
-    MIN_TXNS = 20
+    MIN_TXNS = 100
 
     # Abnormal activity protection
     MAX_SAFE_VOLUME_RATIO = 15.0
@@ -45,6 +45,8 @@ class FinalSignalEngine:
     SUPPORTED_CHAINS = {
         "solana",
         "base",
+        "robinhood",
+        "arc",
     }
 
     # =========================================
@@ -105,6 +107,27 @@ class FinalSignalEngine:
             token.get("total_txns")
         )
 
+        # Early EVM chains use the looser discovery thresholds. Security
+        # remains a hard gate, so lower liquidity does not automatically
+        # become a GEM signal.
+        if chain in ("base", "robinhood", "arc"):
+            # V10.2: EVM chains get a softer final market-activity gate
+            # so they can reach the GEM pipeline like Solana. Security
+            # and final-signal gates remain authoritative.
+            min_liquidity = 3_000
+            min_market_cap = 10_000
+            min_txns = 10
+            min_volume_ratio = 0.02
+            signal_buy_ratio = 0.45
+            early_buy_ratio = 0.45
+        else:
+            min_liquidity = cls.MIN_LIQUIDITY
+            min_market_cap = cls.MIN_MARKET_CAP
+            min_txns = cls.MIN_TXNS
+            min_volume_ratio = cls.MIN_VOLUME_RATIO
+            signal_buy_ratio = cls.MIN_BUY_RATIO
+            early_buy_ratio = cls.EARLY_MIN_BUY_RATIO
+
         reasons = []
 
         hard_reject = False
@@ -126,13 +149,15 @@ class FinalSignalEngine:
         )
 
         buy_pressure_ok = (
-            buy_ratio >= cls.MIN_BUY_RATIO
+            buy_ratio >= signal_buy_ratio
         )
 
         early_buy_pressure_ok = (
-            buy_ratio >= cls.EARLY_MIN_BUY_RATIO
+            buy_ratio >= early_buy_ratio
         )
 
+        # V10: security is a hard gate. A high AI/GEM score can never
+        # upgrade an incomplete or failed security result into a signal.
         security_quality_ok = (
             security_pass
             and security_score >= cls.MIN_SECURITY_SCORE
@@ -176,26 +201,26 @@ class FinalSignalEngine:
         # LIQUIDITY
         # =========================================
 
-        if liquidity < cls.MIN_LIQUIDITY:
+        if liquidity < min_liquidity:
 
             hard_reject = True
 
             reasons.append(
                 f"LIQUIDITY BELOW "
-                f"${cls.MIN_LIQUIDITY:,.0f}"
+                f"${min_liquidity:,.0f}"
             )
 
         # =========================================
         # MARKET CAP
         # =========================================
 
-        if marketcap < cls.MIN_MARKET_CAP:
+        if marketcap < min_market_cap:
 
             hard_reject = True
 
             reasons.append(
                 f"MC BELOW "
-                f"${cls.MIN_MARKET_CAP:,.0f}"
+                f"${min_market_cap:,.0f}"
             )
 
         elif marketcap > cls.MAX_MARKET_CAP:
@@ -211,26 +236,26 @@ class FinalSignalEngine:
         # VOLUME / MC
         # =========================================
 
-        if volume_ratio < cls.MIN_VOLUME_RATIO:
+        if volume_ratio < min_volume_ratio:
 
             hard_reject = True
 
             reasons.append(
                 f"VOLUME/MC BELOW "
-                f"{cls.MIN_VOLUME_RATIO:.2f}"
+                f"{min_volume_ratio:.2f}"
             )
 
         # =========================================
         # TRANSACTIONS
         # =========================================
 
-        if total_txns < cls.MIN_TXNS:
+        if total_txns < min_txns:
 
             hard_reject = True
 
             reasons.append(
                 f"TXNS BELOW "
-                f"{cls.MIN_TXNS}"
+                f"{min_txns}"
             )
 
         # =========================================
@@ -298,14 +323,14 @@ class FinalSignalEngine:
                 f"BUY PRESSURE "
                 f"{buy_ratio:.2%} "
                 f"BELOW SIGNAL LEVEL "
-                f"{cls.MIN_BUY_RATIO:.2%}"
+                f"{signal_buy_ratio:.2%}"
             )
 
-        elif buy_ratio < cls.EARLY_MIN_BUY_RATIO:
+        elif buy_ratio < early_buy_ratio:
 
             reasons.append(
                 f"BUY PRESSURE BELOW "
-                f"{cls.EARLY_MIN_BUY_RATIO:.2%}"
+                f"{early_buy_ratio:.2%}"
             )
 
         # =========================================
@@ -340,7 +365,7 @@ class FinalSignalEngine:
         # GEM >= 75
         # AI >= 65
         # SECURITY PASS
-        # BUY >= 0.55
+        # EVM BUY >= 0.45 / Solana BUY >= 0.50
         # FINAL >= 80
         #
         # Abnormal volume does not automatically
@@ -388,7 +413,7 @@ class FinalSignalEngine:
         # GEM >= 70
         # AI >= 65
         # SECURITY PASS
-        # BUY >= 0.55
+        # EVM BUY >= 0.45 / Solana BUY >= 0.50
         # FINAL >= 70
         # =========================================
 
@@ -432,12 +457,13 @@ class FinalSignalEngine:
         # GEM >= 60
         # AI >= 55
         # SECURITY PASS
-        # BUY >= 0.50
+        # EVM BUY >= 0.45 / Solana BUY >= 0.50
         # FINAL >= 60
         #
         # IMPORTANT:
         #
-        # EARLY GEM IS NOT AUTO SIGNAL.
+        # EARLY GEM is eligible for Auto Signal delivery when all
+        # other automatic gates pass.
         # =========================================
 
         if (
@@ -452,7 +478,7 @@ class FinalSignalEngine:
                 "EARLY ENTRY CANDIDATE"
             )
 
-            if buy_ratio < cls.MIN_BUY_RATIO:
+            if buy_ratio < signal_buy_ratio:
 
                 reasons.append(
                     "BUY PRESSURE NOT YET "
@@ -461,7 +487,7 @@ class FinalSignalEngine:
 
             return cls._result(
                 final_score=final_score,
-                should_signal=False,
+                should_signal=True,
                 status="EARLY GEM",
                 signal="👀 EARLY GEM",
                 reasons=reasons,
@@ -540,10 +566,11 @@ class FinalSignalEngine:
 
             "signal": signal,
 
-            # Keep both keys available
-            # for scanner / Telegram compatibility.
+            # Both keys intentionally carry the same canonical final
+            # decision for backward compatibility.
             "final_signal": signal,
             "signal": signal,
+            "signal_source": "final_signal_engine",
 
             "reasons": reasons,
 

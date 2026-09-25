@@ -17,7 +17,7 @@ class GemIntelligence:
     """
 
     MIN_MC = 10_000.0
-    MAX_MC = 5_000_000.0
+    MAX_MC = 1_000_000.0
 
     def __init__(self, confirmation_scans: int = 3, history_size: int = 8):
         self.confirmation_scans = max(1, int(confirmation_scans))

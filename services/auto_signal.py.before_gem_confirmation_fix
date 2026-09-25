@@ -1531,16 +1531,16 @@ class AutoSignalEngine:
         if final_signal not in {"🔥 STRONG GEM", "🚀 GEM SIGNAL", "👀 EARLY GEM"}:
             return "final_signal_integrity"
 
-        # FinalSignalEngine is authoritative for STRONG GEM / GEM SIGNAL / EARLY GEM.
-        # No second confirmed_gem gate is applied here.
+        # Automatic delivery requires confirmation for STRONG GEM and GEM SIGNAL.
+        # EARLY GEM is allowed as an explicitly requested early-stage signal.
+        if final_status != "EARLY GEM" and token.get("confirmed_gem") is not True:
+            return "gem_confirmation"
 
         if token.get("false_signal_penalty", 0) >= 25:
             return "false_signal"
 
-        # RecommendationEngine.is_recommended is not a final delivery gate.
-# FinalSignalEngine + security gates are authoritative for Telegram delivery.
-# This allows valid multi-chain signals to pass even when the legacy
-# recommendation engine marks is_recommended=False.
+        if not token.get("is_recommended", False):
+            return "recommendation"
 
         if not token.get("security_should_pass", False):
             return "security_gate"

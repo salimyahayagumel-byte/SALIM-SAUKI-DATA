@@ -30,7 +30,7 @@ async def autostatus(update: Update, context: ContextTypes.DEFAULT_TYPE):
     last_scan = summary.get("scan", getattr(engine, "scan_count", 0))
 
     text = (
-        "🤖 AUTO SIGNAL STATUS — V8.7\n"
+        "🤖 AUTO SIGNAL STATUS — V10\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         f"🟢 Engine: {'RUNNING' if engine.running else 'STOPPED'}\n"
         f"🔎 Scans: {engine.scan_count}\n"

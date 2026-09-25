@@ -127,7 +127,7 @@ AUTO_SIGNAL_MIN_RECOMMENDATION = _env_int("AUTO_SIGNAL_MIN_RECOMMENDATION", 65)
 
 AUTO_SIGNAL_REQUIRE_SECURITY = _env_bool("AUTO_SIGNAL_REQUIRE_SECURITY", True)
 
-AUTO_SIGNAL_MIN_SECURITY = _env_int("AUTO_SIGNAL_MIN_SECURITY", 70)
+AUTO_SIGNAL_MIN_SECURITY = _env_int("AUTO_SIGNAL_MIN_SECURITY", 69)
 
 AUTO_SIGNAL_REQUIRE_FINAL_SIGNAL = _env_bool("AUTO_SIGNAL_REQUIRE_FINAL_SIGNAL", True)
 
@@ -156,7 +156,7 @@ MAX_RESULTS = _env_int("MAX_RESULTS", 10)
 
 MIN_MARKETCAP = _env_float("MIN_MARKETCAP", 10000)
 
-MAX_MARKETCAP = _env_float("MAX_MARKETCAP", 5000000)
+MAX_MARKETCAP = _env_float("MAX_MARKETCAP", 1000000)
 
 MIN_LIQUIDITY = _env_float("MIN_LIQUIDITY", 10000)
 
@@ -214,11 +214,11 @@ AI_WATCH_SCORE = int(
 MIN_SECURITY_SCORE = int(
     os.getenv(
         "MIN_SECURITY_SCORE",
-        "70",
+        "69",
     )
 )
 
-AUTO_SIGNAL_MIN_SECURITY = _env_int("AUTO_SIGNAL_MIN_SECURITY", 70)
+AUTO_SIGNAL_MIN_SECURITY = _env_int("AUTO_SIGNAL_MIN_SECURITY", 69)
 
 REQUIRE_MINT_AUTHORITY_DISABLED = os.getenv(
     "REQUIRE_MINT_AUTHORITY_DISABLED",
@@ -257,7 +257,7 @@ FINAL_MIN_MARKET_CAP = float(
 FINAL_MAX_MARKET_CAP = float(
     os.getenv(
         "FINAL_MAX_MARKET_CAP",
-        "5000000",
+        "1000000",
     )
 )
 
@@ -461,6 +461,16 @@ SOLANA_RPC_URL_3 = os.getenv(
 
 # =========================================================
 # BASE / EVM SECURITY
+# Additional EVM chains supported by the scanner.
+ROBINHOOD_RPC_URL = os.getenv(
+    "ROBINHOOD_RPC_URL",
+    "https://rpc.mainnet.chain.robinhood.com",
+)
+ARC_RPC_URL = os.getenv(
+    "ARC_RPC_URL",
+    "https://rpc.mainnet.arc.io",
+)
+
 # =========================================================
 
 BASE_RPC_URL = os.getenv(

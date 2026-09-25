@@ -720,17 +720,10 @@ class RecommendationEngine:
 
             "is_recommended": (
                 not hard_reject
-                and security_pass
-                and (
-                    action in {
-                        "BUY",
-                        "STRONG BUY",
-                    }
-                    or (
-                        final_should_signal
-                        and recommendation_score >= cls.BUY_SCORE
-                    )
-                )
+                and action in {
+                    "BUY",
+                    "STRONG BUY",
+                }
             ),
         }
 

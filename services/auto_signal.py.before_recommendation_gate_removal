@@ -1537,10 +1537,8 @@ class AutoSignalEngine:
         if token.get("false_signal_penalty", 0) >= 25:
             return "false_signal"
 
-        # RecommendationEngine.is_recommended is not a final delivery gate.
-# FinalSignalEngine + security gates are authoritative for Telegram delivery.
-# This allows valid multi-chain signals to pass even when the legacy
-# recommendation engine marks is_recommended=False.
+        if not token.get("is_recommended", False):
+            return "recommendation"
 
         if not token.get("security_should_pass", False):
             return "security_gate"

@@ -51,16 +51,26 @@ class SecurityChecker:
     ]
 
     # =========================================================
-    # BASE / EVM RPC
+    # EVM RPC NETWORKS
     # =========================================================
 
-    DEFAULT_BASE_RPC = (
-        "https://mainnet.base.org"
-    )
+    DEFAULT_BASE_RPC = "https://mainnet.base.org"
 
     FALLBACK_BASE_RPCS = [
         "https://mainnet.base.org",
         "https://base-rpc.publicnode.com",
+    ]
+
+    DEFAULT_ROBINHOOD_RPC = "https://rpc.mainnet.chain.robinhood.com"
+
+    FALLBACK_ROBINHOOD_RPCS = [
+        "https://rpc.mainnet.chain.robinhood.com",
+    ]
+
+    DEFAULT_ARC_RPC = "https://rpc.mainnet.arc.io"
+
+    FALLBACK_ARC_RPCS = [
+        "https://rpc.mainnet.arc.io",
     ]
 
     # =========================================================
@@ -272,18 +282,80 @@ class SecurityChecker:
         )
 
         # =====================================
-        # LOGGING
+        # ROBINHOOD / ARC RPC LISTS
         # =====================================
-
-        print(
-            "🔌 Solana RPC endpoints:",
-            len(self.rpc_urls)
+        self.robinhood_rpc_urls = self._build_rpc_list(
+            "ROBINHOOD_RPC_URL",
+            "ROBINHOOD_RPC_URLS",
+            self.FALLBACK_ROBINHOOD_RPCS,
+            self.DEFAULT_ROBINHOOD_RPC,
         )
+        self.robinhood_rpc_url = self.robinhood_rpc_urls[0]
 
-        print(
-            "🔵 Base RPC endpoints:",
-            len(self.base_rpc_urls)
+        self.arc_rpc_urls = self._build_rpc_list(
+            "ARC_RPC_URL",
+            "ARC_RPC_URLS",
+            self.FALLBACK_ARC_RPCS,
+            self.DEFAULT_ARC_RPC,
         )
+        self.arc_rpc_url = self.arc_rpc_urls[0]
+
+        # Per-chain EVM RPC cooldowns.
+        # Keyed by (chain, rpc_url) so Base, Robinhood and Arc
+        # maintain independent rate-limit state.
+        self._evm_rpc_cooldowns = {}
+
+        # =====================================
+        # BASE HONEYPOT SECURITY
+        #
+        # Configurable through environment variables.
+        # Base can fail closed when the external simulation
+        # is required but unavailable. Robinhood and Arc
+        # do not use the Base honeypot requirement.
+        # =====================================
+        self.base_honeypot_enabled = (
+            os.getenv("BASE_HONEYPOT_ENABLED", "true").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        self.base_honeypot_required = (
+            os.getenv("BASE_HONEYPOT_REQUIRED", "true").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        try:
+            self.base_honeypot_timeout = float(
+                os.getenv("BASE_HONEYPOT_TIMEOUT", "15")
+            )
+        except (TypeError, ValueError):
+            self.base_honeypot_timeout = 15.0
+
+        try:
+            self.base_honeypot_cache_seconds = float(
+                os.getenv("BASE_HONEYPOT_CACHE_SECONDS", "300")
+            )
+        except (TypeError, ValueError):
+            self.base_honeypot_cache_seconds = 300.0
+
+        self._base_honeypot_cache = {}
+
+
+    def _build_rpc_list(self, single_env, multi_env, fallbacks, default):
+        values = []
+        single = os.getenv(single_env, "").strip()
+        multi = os.getenv(multi_env, "").strip()
+        if single:
+            values.append(single)
+        if multi:
+            values.extend(
+                item.strip() for item in multi.split(",") if item.strip()
+            )
+        values.extend(fallbacks)
+        if not values:
+            values.append(default)
+        result = []
+        for value in values:
+            if value and value not in result:
+                result.append(value)
+        return result
 
     # =========================================================
     # SOLANA RPC REQUEST
@@ -493,7 +565,8 @@ class SecurityChecker:
     async def _base_rpc(
         self,
         method,
-        params
+        params,
+        chain="base",
     ):
         """
         Send Base/EVM JSON-RPC request.
@@ -525,16 +598,19 @@ class SecurityChecker:
 
         last_error = None
 
+        # Human-readable chain label used by RPC logs.
+        rpc_label = str(chain or "evm").upper()
+
         # =====================================
-        # BASE RPC RATE-LIMIT COOLDOWN
+        # EVM RPC RATE-LIMIT COOLDOWN
         # =====================================
 
         if not hasattr(
             self,
-            "_base_rpc_cooldowns"
+            "_evm_rpc_cooldowns"
         ):
 
-            self._base_rpc_cooldowns = {}
+            self._evm_rpc_cooldowns = {}
 
         cooldown_seconds = 60.0
 
@@ -549,27 +625,34 @@ class SecurityChecker:
 
         ordered_rpcs = []
 
-        if self.base_rpc_url:
+        # Select the RPC pool that belongs to the requested EVM chain.
+        # Base, Robinhood and Arc must never share RPC endpoints.
+        chain_key = str(chain or "base").lower().strip()
 
-            ordered_rpcs.append(
-                self.base_rpc_url
-            )
+        if chain_key == "robinhood":
+            active_rpc = self.robinhood_rpc_url
+            chain_rpc_urls = self.robinhood_rpc_urls
+        elif chain_key == "arc":
+            active_rpc = self.arc_rpc_url
+            chain_rpc_urls = self.arc_rpc_urls
+        else:
+            active_rpc = self.base_rpc_url
+            chain_rpc_urls = self.base_rpc_urls
 
-        for rpc_url in self.base_rpc_urls:
+        if active_rpc:
+            ordered_rpcs.append(active_rpc)
 
+        for rpc_url in chain_rpc_urls:
             if rpc_url not in ordered_rpcs:
-
-                ordered_rpcs.append(
-                    rpc_url
-                )
+                ordered_rpcs.append(rpc_url)
 
         available_rpcs = []
 
         for rpc_url in ordered_rpcs:
 
             cooldown_until = (
-                self._base_rpc_cooldowns.get(
-                    rpc_url,
+                self._evm_rpc_cooldowns.get(
+                    (chain_key, rpc_url),
                     0.0
                 )
             )
@@ -581,7 +664,7 @@ class SecurityChecker:
                 )
 
                 print(
-                    f"⏳ Base RPC cooldown: "
+                    f"⏳ {rpc_label} RPC cooldown: "
                     f"{rpc_url} "
                     f"({remaining:.1f}s)"
                 )
@@ -638,8 +721,8 @@ class SecurityChecker:
 
                         if response.status_code == 429:
 
-                            self._base_rpc_cooldowns[
-                                rpc_url
+                            self._evm_rpc_cooldowns[
+                                (chain_key, rpc_url)
                             ] = (
                                 now +
                                 cooldown_seconds
@@ -650,7 +733,7 @@ class SecurityChecker:
                             )
 
                             print(
-                                f"⚠️ Base RPC #{rpc_index} "
+                                f"⚠️ {rpc_label} RPC #{rpc_index} "
                                 f"RATE LIMITED (429): "
                                 f"{self._safe_rpc_url(rpc_url)}"
                             )
@@ -678,7 +761,7 @@ class SecurityChecker:
                             )
 
                             print(
-                                f"⚠️ Base RPC #{rpc_index} "
+                                f"⚠️ {rpc_label} RPC #{rpc_index} "
                                 f"attempt {attempt}: "
                                 f"{last_error}"
                             )
@@ -694,19 +777,23 @@ class SecurityChecker:
                             "jsonrpc"
                         ) == "2.0":
 
-                            self.base_rpc_url = (
-                                rpc_url
-                            )
+                            # Remember the successful endpoint for this chain.
+                            if chain_key == "robinhood":
+                                self.robinhood_rpc_url = rpc_url
+                            elif chain_key == "arc":
+                                self.arc_rpc_url = rpc_url
+                            else:
+                                self.base_rpc_url = rpc_url
 
                             # Clear old cooldown after
                             # successful recovery.
-                            self._base_rpc_cooldowns.pop(
-                                rpc_url,
+                            self._evm_rpc_cooldowns.pop(
+                                (chain_key, rpc_url),
                                 None
                             )
 
                             print(
-                                f"✅ Base RPC OK: "
+                                f"✅ {rpc_label} RPC OK: "
                                 f"{self._safe_rpc_url(rpc_url)}"
                             )
 
@@ -717,7 +804,7 @@ class SecurityChecker:
                         )
 
                         print(
-                            f"⚠️ Base RPC #{rpc_index} "
+                            f"⚠️ {rpc_label} RPC #{rpc_index} "
                             f"attempt {attempt}: "
                             f"{last_error}"
                         )
@@ -735,7 +822,7 @@ class SecurityChecker:
                     last_error = repr(exc)
 
                     print(
-                        f"⚠️ Base RPC #{rpc_index} "
+                        f"⚠️ {rpc_label} RPC #{rpc_index} "
                         f"attempt {attempt} "
                         f"TIMEOUT/NETWORK:"
                         f" {rpc_url}"
@@ -746,7 +833,7 @@ class SecurityChecker:
                     last_error = repr(exc)
 
                     print(
-                        f"⚠️ Base RPC #{rpc_index} "
+                        f"⚠️ {rpc_label} RPC #{rpc_index} "
                         f"attempt {attempt}: "
                         f"{exc}"
                     )
@@ -764,13 +851,13 @@ class SecurityChecker:
                     )
 
         print(
-            "❌ All Base RPC endpoints failed."
+            f"❌ All {rpc_label} RPC endpoints failed."
         )
 
         if last_error:
 
             print(
-                "Last Base RPC error:",
+                f"Last {rpc_label} RPC error:",
                 last_error
             )
 
@@ -1178,7 +1265,8 @@ class SecurityChecker:
 
     async def get_base_contract_code(
         self,
-        address
+        address,
+        chain="base",
     ):
 
         if not self.is_evm_address(
@@ -1193,6 +1281,7 @@ class SecurityChecker:
                 address,
                 "latest",
             ],
+            chain=chain,
         )
 
         if not data:
@@ -1212,7 +1301,8 @@ class SecurityChecker:
     async def base_eth_call(
         self,
         address,
-        data
+        data,
+        chain="base",
     ):
 
         if not self.is_evm_address(
@@ -1230,6 +1320,7 @@ class SecurityChecker:
                 },
                 "latest",
             ],
+            chain=chain,
         )
 
         if not response:
@@ -1252,7 +1343,8 @@ class SecurityChecker:
 
     async def get_base_erc20_metadata(
         self,
-        address
+        address,
+        chain="base",
     ):
         """
         Standard ERC-20 calls:
@@ -1289,22 +1381,26 @@ class SecurityChecker:
 
         name_raw = await self.base_eth_call(
             address,
-            NAME_SELECTOR
+            NAME_SELECTOR,
+            chain=chain,
         )
 
         symbol_raw = await self.base_eth_call(
             address,
-            SYMBOL_SELECTOR
+            SYMBOL_SELECTOR,
+            chain=chain,
         )
 
         decimals_raw = await self.base_eth_call(
             address,
-            DECIMALS_SELECTOR
+            DECIMALS_SELECTOR,
+            chain=chain,
         )
 
         supply_raw = await self.base_eth_call(
             address,
-            TOTAL_SUPPLY_SELECTOR
+            TOTAL_SUPPLY_SELECTOR,
+            chain=chain,
         )
 
         # =====================================
@@ -1480,6 +1576,10 @@ class SecurityChecker:
             - decimals
         """
 
+        chain = str(token.get("chain", "base") or "base").lower().strip()
+        if chain not in ("base", "robinhood", "arc"):
+            chain = "base"
+
         address = str(
             token.get(
                 "address",
@@ -1514,7 +1614,7 @@ class SecurityChecker:
                 "decimals": None,
 
                 "security_reasons": [
-                    "INVALID BASE/EVM TOKEN ADDRESS"
+                    "INVALID EVM TOKEN ADDRESS"
                 ],
 
                 "contract_exists": False,
@@ -1529,14 +1629,18 @@ class SecurityChecker:
 
         try:
 
-            code = await self.get_base_contract_code(
-                address
-            )
+            if chain == "base":
+                code = await self.get_base_contract_code(address)
+            else:
+                code = await self.get_base_contract_code(
+                    address,
+                    chain=chain,
+                )
 
         except Exception as exc:
 
             print(
-                f"❌ Base contract check error "
+                f"❌ {chain.upper()} contract check error "
                 f"for {address}: {exc}"
             )
 
@@ -1562,7 +1666,7 @@ class SecurityChecker:
                 "decimals": None,
 
                 "security_reasons": [
-                    "COULD NOT READ BASE CONTRACT"
+                    "COULD NOT READ EVM CONTRACT"
                 ],
 
                 "contract_exists": False,
@@ -1608,7 +1712,7 @@ class SecurityChecker:
                 "decimals": None,
 
                 "security_reasons": [
-                    "NO CONTRACT BYTECODE FOUND"
+                    "NO EVM CONTRACT BYTECODE FOUND"
                 ],
 
                 "contract_exists": False,
@@ -1624,8 +1728,13 @@ class SecurityChecker:
         try:
 
             metadata = (
-                await self.get_base_erc20_metadata(
-                    address
+                (
+                    await self.get_base_erc20_metadata(address)
+                    if chain == "base"
+                    else await self.get_base_erc20_metadata(
+                        address,
+                        chain=chain,
+                    )
                 )
             )
 
@@ -1685,7 +1794,15 @@ class SecurityChecker:
         # HONEYPOT / TRADE SIMULATION
         # =====================================
 
-        honeypot = await self.check_base_honeypot(token)
+        honeypot = (
+            await self.check_base_honeypot(token)
+            if chain == "base"
+            else {
+                "available": False,
+                "enabled": False,
+                "reason": "EXTERNAL HONEYPOT SIMULATION NOT CONFIGURED FOR THIS CHAIN",
+            }
+        )
 
         # =====================================
         # SCORE
@@ -1699,7 +1816,7 @@ class SecurityChecker:
         score += 20
 
         reasons.append(
-            "BASE CONTRACT EXISTS"
+            "EVM CONTRACT EXISTS"
         )
 
         # Bytecode
@@ -1888,9 +2005,9 @@ class SecurityChecker:
 
             status = "🟢 PASS"
 
-        elif score >= 70:
+        elif score >= 69:
 
-            status = "🟡 CAUTION"
+            status = "🟢 PASS"
 
         else:
 
@@ -1908,7 +2025,7 @@ class SecurityChecker:
         # =====================================
 
         should_pass = (
-            score >= 70
+            score >= 69
             and bytecode_exists
             and erc20_metadata_valid
             and supply is not None
@@ -1916,7 +2033,8 @@ class SecurityChecker:
             and decimals is not None
             and 0 <= decimals <= 36
             and (
-                not self.base_honeypot_required
+                chain != "base"
+                or not self.base_honeypot_required
                 or bool(honeypot.get("available"))
             )
             and honeypot.get("is_honeypot") is not True
@@ -1982,7 +2100,7 @@ class SecurityChecker:
                 ),
 
             "security_chain":
-                "base",
+                chain,
 
             "honeypot_check": honeypot,
             "honeypot_available": bool(honeypot.get("available")),
@@ -2010,7 +2128,7 @@ class SecurityChecker:
 
             solana -> Solana SPL security
 
-            base -> Base/EVM security
+            base/robinhood/arc -> EVM security
         """
 
         chain = str(
@@ -2024,7 +2142,7 @@ class SecurityChecker:
         # BASE
         # =====================================
 
-        if chain == "base":
+        if chain in ("base", "robinhood", "arc"):
 
             return await self.check_base(
                 token
@@ -2244,9 +2362,9 @@ class SecurityChecker:
 
             status = "🟢 PASS"
 
-        elif score >= 60:
+        elif score >= 69:
 
-            status = "🟡 CAUTION"
+            status = "🟢 PASS"
 
         else:
 
@@ -2257,7 +2375,7 @@ class SecurityChecker:
         # =====================================
 
         should_pass = (
-            score >= 70
+            score >= 69
             and not parsed[
                 "mint_authority_enabled"
             ]

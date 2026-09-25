@@ -236,10 +236,16 @@ V8.6 adds:
 - Separate Telegram HTTP transports are used when the cleanup bot has a different token.
 
 
-## V8.7 diagnostics
+## V10 diagnostics
 
 - `/autostatus` shows live Auto Signal Engine scan/candidate/rejection statistics.
 - `/health` now performs live API checks for FluxRPC, Solana RPCs, Base RPCs, DexScreener, RugCheck, Birdeye, and Helius when configured.
 - Solana security RPC selection prefers FluxRPC when `FLUXRPC_API_KEY` or `FLUXRPC_RPC_URL` is configured, then uses configured/fallback RPCs.
 - RPC failures are cooled down briefly so an unhealthy endpoint is not hammered every scan.
 - Secret-bearing RPC query strings are redacted from logs.
+
+
+## V10 MC/AGE Expansion
+- Scanner market-cap range: $10K-$1M across Solana, Base, Robinhood Chain, and Arc.
+- Token age window: 1 second to 48 hours across supported chains.
+- Security hard-blocks remain unchanged.

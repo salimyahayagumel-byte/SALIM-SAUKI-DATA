@@ -262,17 +262,20 @@ class AIScoring:
         # SIGNAL
         # =========================================
 
+        # IMPORTANT V10 SIGNAL INTEGRITY:
+        # This is an AI SCORE classification only. It is NOT the final
+        # trading/signal decision. Never use BUY/STRONG BUY wording here.
         if score >= 85:
 
-            signal = "🔥 STRONG BUY WATCH"
+            signal = "🔥 HIGH AI SCORE"
 
         elif score >= 75:
 
-            signal = "🚀 BUY WATCH"
+            signal = "🚀 GOOD AI SCORE"
 
         elif score >= 65:
 
-            signal = "🟢 WATCH"
+            signal = "🟢 AI WATCH"
 
         elif score >= 50:
 
@@ -292,6 +295,8 @@ class AIScoring:
             "grade": grade,
 
             "signal": signal,
+            "ai_signal": signal,
+            "signal_source": "ai_scoring",
 
             "liquidity": liquidity,
 

@@ -603,13 +603,12 @@ class PNLTracker:
             row["chain"]
         ).lower()
 
-        chain_label = (
-            "🟣 Solana"
-            if chain == "solana"
-            else "🔵 Base"
-            if chain == "base"
-            else f"⚪ {chain.title()}"
-        )
+        chain_label = {
+            "solana": "🟣 Solana",
+            "base": "🔵 Base",
+            "robinhood": "🟢 Robinhood Chain",
+            "arc": "🟠 Arc",
+        }.get(chain, f"⚪ {chain.title()}")
 
         multiplier = 1 + (
             pnl / 100.0
@@ -1103,11 +1102,12 @@ class PNLTracker:
         multiple = 1.0 + (pnl / 100.0)
         change = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "⚪"
         chain = str(row.get("chain", "")).lower()
-        chain_label = (
-            "🟣 Solana" if chain == "solana" else
-            "🔵 Base" if chain == "base" else
-            f"⚪ {chain.title()}"
-        )
+        chain_label = {
+            "solana": "🟣 Solana",
+            "base": "🔵 Base",
+            "robinhood": "🟢 Robinhood Chain",
+            "arc": "🟠 Arc",
+        }.get(chain, f"⚪ {chain.title()}")
         milestone = PNLTracker._number(row.get("last_milestone"))
         drawdown = max(0.0, highest_pnl - pnl)
         pair_address = str(row.get("pair_address", "") or "").strip()

@@ -1,0 +1,25 @@
+services:
+  salim-sauki-data:
+    build: .
+    container_name: salim-sauki-data
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "10000"
+      DASHBOARD_HOST: "0.0.0.0"
+      DATABASE_URL: "sqlite:///./data/salim_sauki_data.db"
+      CLEANUP_DATABASE_PATH: "./data/cleanup_messages.db"
+    ports:
+      - "10000:10000"
+    volumes:
+      - salim_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:10000/health', timeout=5)\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  salim_data:

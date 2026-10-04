@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+*.db
+*.db-shm
+*.db-wal
+__pycache__
+*.pyc
+.pytest_cache
+*.zip
+node_modules

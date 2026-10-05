@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Set, Tuple
 from urllib.parse import quote
 
 from config import (
+    AUTO_SIGNAL_MIN_SCORE,
     DATABASE_URL,
     PNL_TRACKER_ENABLED,
     PNL_TRACKER_INTERVAL,
@@ -75,9 +76,11 @@ class AutoSignalEngine:
     # by the best remaining candidates.
     DEFAULT_MAX_SIGNALS_PER_CHAIN = 2
 
+    # RecommendationEngine.is_recommended remains informational; the configured
+    # auto final-score threshold is the authoritative score gate.
     MIN_RECOMMENDATION_SCORE = 65
 
-    MIN_FINAL_SCORE = 65
+    MIN_FINAL_SCORE = AUTO_SIGNAL_MIN_SCORE
 
     MIN_SECURITY_SCORE = 69
     SECURITY_MIN_BY_CHAIN = {
@@ -1549,9 +1552,9 @@ class AutoSignalEngine:
             return "false_signal"
 
         # RecommendationEngine.is_recommended is not a final delivery gate.
-# FinalSignalEngine + security gates are authoritative for Telegram delivery.
-# This allows valid multi-chain signals to pass even when the legacy
-# recommendation engine marks is_recommended=False.
+        # FinalSignalEngine + security gates are authoritative for Telegram
+        # delivery, while the configured auto final-score threshold remains
+        # an explicit delivery policy.
 
         if not token.get("security_should_pass", False):
             return "security_gate"

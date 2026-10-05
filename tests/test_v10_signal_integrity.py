@@ -52,11 +52,26 @@ class V10SignalIntegrityTests(unittest.TestCase):
             "security_score": 69,
             # Recommendation score is intentionally not a delivery gate.
             "recommendation_score": 0,
-            "final_score": 65,
+            "final_score": 75,
         }
         self.assertEqual(
             AutoSignalEngine._signal_rejection_reason(token),
             "",
+        )
+
+    def test_auto_signal_rejects_below_configured_final_score(self):
+        token = {
+            "final_should_signal": True,
+            "final_status": "GEM SIGNAL",
+            "final_signal": "🚀 GEM SIGNAL",
+            "false_signal_penalty": 0,
+            "security_should_pass": True,
+            "security_score": 69,
+            "final_score": AutoSignalEngine.MIN_FINAL_SCORE - 1,
+        }
+        self.assertEqual(
+            AutoSignalEngine._signal_rejection_reason(token),
+            "final_score",
         )
 
     def test_auto_signal_rejects_mismatched_final_status(self):

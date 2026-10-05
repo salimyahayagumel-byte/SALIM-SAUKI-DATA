@@ -14,3 +14,7 @@ cache/
 salim_sauki_data.db
 *.db-*
 salim_sauki_data.db.V5-ZIP-BACKUP
+*.db
+.env
+cleanup_messages.db
+salim_sauki_data.db

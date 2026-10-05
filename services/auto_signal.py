@@ -719,6 +719,10 @@ class AutoSignalEngine:
         })
 
         print(
+            f"📤 Auto delivery queue: {len(selected_candidates)} candidate(s)"
+        )
+
+        print(
             "⚖️ Selected signal distribution: "
             + " | ".join(
                 f"{chain.upper()}={count}"
@@ -1535,7 +1539,13 @@ class AutoSignalEngine:
         # V10 defense-in-depth: automatic delivery may only use a final
         # signal produced by FinalSignalEngine. This prevents an intermediate
         # AI/GEM label from ever becoming a Telegram auto-signal.
-        if not token.get("final_should_signal", False):
+        # Some scanner/final-signal versions do not populate the optional
+        # boolean ``final_should_signal`` even when they provide a valid
+        # final signal.  Treat an explicitly-false value as a rejection,
+        # but do not reject a valid final signal merely because the optional
+        # compatibility flag is absent.
+        final_should_signal = token.get("final_should_signal")
+        if final_should_signal is False:
             return "final_signal"
 
         final_status = str(token.get("final_status", "")).upper().strip()
@@ -1556,7 +1566,11 @@ class AutoSignalEngine:
         # delivery, while the configured auto final-score threshold remains
         # an explicit delivery policy.
 
-        if not token.get("security_should_pass", False):
+        # ``security_should_pass`` is an optional compatibility flag.
+        # Security score + chain-specific threshold are the authoritative
+        # safety gate, so a missing flag must not suppress a safe candidate.
+        security_should_pass = token.get("security_should_pass")
+        if security_should_pass is False:
             return "security_gate"
 
         chain = str(token.get("chain", "")).lower().strip()

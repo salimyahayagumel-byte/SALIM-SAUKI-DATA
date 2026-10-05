@@ -52,6 +52,15 @@ from services.scanner import TokenScanner
 from services.history import SignalHistory
 from services.pnl_tracker import PNLTracker
 
+try:
+    from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
+except Exception:
+    class BadRequest(Exception): pass
+    class NetworkError(Exception): pass
+    class RetryAfter(Exception):
+        retry_after = 0
+    class TimedOut(Exception): pass
+
 
 class AutoSignalEngine:
 
@@ -806,68 +815,17 @@ class AutoSignalEngine:
                 token
             )
 
-            try:
+            image_url = str(
+                token.get("image_url", "") or ""
+            ).strip()
 
-                image_url = str(
-                    token.get(
-                        "image_url",
-                        "",
-                    )
-                    or ""
-                ).strip()
+            delivered = await self._deliver_signal(
+                symbol=symbol,
+                message=message,
+                image_url=image_url,
+            )
 
-                # -------------------------------------------------
-                # TOKEN IMAGE + SIGNAL
-                # -------------------------------------------------
-                # Send the token artwork above the signal when a
-                # valid DexScreener image URL is available.
-                # If Telegram cannot fetch the image, fall back
-                # to the normal text message so the signal is not lost.
-                if image_url.startswith(
-                    ("http://", "https://")
-                ):
-
-                    try:
-
-                        await self.bot.send_photo(
-                            chat_id=self.chat_id,
-                            photo=image_url,
-                            caption=message,
-                            parse_mode="HTML",
-                        )
-
-                    except Exception as image_exc:
-
-                        print(
-                            f"⚠️ Token image send failed "
-                            f"for ${symbol}: {image_exc}"
-                        )
-
-                        await self.bot.send_message(
-                            chat_id=self.chat_id,
-                            text=message,
-                            parse_mode="HTML",
-                            disable_web_page_preview=True,
-                        )
-
-                else:
-
-                    await self.bot.send_message(
-                        chat_id=self.chat_id,
-                        text=message,
-                        parse_mode="HTML",
-                        disable_web_page_preview=True,
-                    )
-
-            except Exception as exc:
-
-                self.telegram_errors += 1
-
-                print(
-                    f"❌ Telegram send error "
-                    f"for ${symbol}: {exc}"
-                )
-
+            if not delivered:
                 continue
 
             # -------------------------------------------------
@@ -930,6 +888,60 @@ class AutoSignalEngine:
             f"📤 Signals sent this scan: "
             f"{sent_this_scan}"
         )
+
+    # =========================================================
+    # TELEGRAM DELIVERY
+    # =========================================================
+
+    async def _deliver_signal(self, symbol: str, message: str, image_url: str = "") -> bool:
+        """Deliver one signal safely; return True only after Telegram accepts it."""
+        chat_id = str(self.chat_id or "").strip()
+        if not chat_id:
+            self.telegram_errors += 1
+            print(f"❌ Telegram delivery skipped for ${symbol}: chat_id is empty")
+            return False
+
+        async def send_text():
+            await self.bot.send_message(
+                chat_id=self.chat_id, text=message, parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+
+        async def send_photo():
+            await self.bot.send_photo(
+                chat_id=self.chat_id, photo=image_url, caption=message, parse_mode="HTML"
+            )
+
+        for attempt in range(1, 3):
+            try:
+                if image_url.startswith(("http://", "https://")):
+                    try:
+                        await send_photo()
+                        return True
+                    except (BadRequest, ValueError) as exc:
+                        print(f"⚠️ Token image failed for ${symbol}; text fallback: {exc}")
+                        await send_text()
+                        return True
+                await send_text()
+                return True
+            except RetryAfter as exc:
+                delay = max(1.0, min(30.0, float(getattr(exc, "retry_after", 1.0))))
+                print(f"⏳ Telegram 429 for ${symbol}; retry in {delay:.1f}s (attempt {attempt}/2)")
+                if attempt < 2:
+                    await asyncio.sleep(delay)
+                    continue
+            except (TimedOut, NetworkError) as exc:
+                delay = min(4.0, float(attempt))
+                print(f"⚠️ Telegram network error for ${symbol}: {exc}; retry in {delay:.1f}s")
+                if attempt < 2:
+                    await asyncio.sleep(delay)
+                    continue
+            except Exception as exc:
+                print(f"❌ Telegram delivery error for ${symbol}: {type(exc).__name__}: {exc}")
+                break
+
+        self.telegram_errors += 1
+        return False
 
     # =========================================================
     # FAIR CANDIDATE SELECTION

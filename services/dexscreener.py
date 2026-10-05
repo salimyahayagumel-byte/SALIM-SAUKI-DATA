@@ -65,7 +65,7 @@ class DexScreener:
         self._last_request_at = 0.0
         self._min_request_interval = max(
             0.0,
-            float(os.getenv("DEXSCREENER_MIN_REQUEST_INTERVAL", "0.20")),
+            float(os.getenv("DEXSCREENER_MIN_REQUEST_INTERVAL", "0.35")),
         )
 
         self._last_error = ""
@@ -559,33 +559,12 @@ class DexScreener:
 
             base_extra_queries = [
                 "base",
-                "base chain",
-                "base meme",
-                "base ai",
                 "new base",
                 "base launch",
-                "base launchpad",
-                "base fairlaunch",
-                "base community",
-                "base degen",
-                "base pump",
-                "base viral",
-                "base dog",
-                "base cat",
-                "base inu",
-                "base pepe",
-                "base moon",
-                "base token",
-                "base gem",
-                "base microcap",
-                "base smallcap",
-                "base eth",
                 "aerodrome",
                 "degen",
-                "higher",
                 "brett",
                 "toshi",
-                "virtual",
                 "clanker",
             ]
 
@@ -945,32 +924,12 @@ class DexScreener:
 
             queries = [
                 "base",
-                "base chain",
-                "base meme",
-                "base ai",
                 "new base",
                 "base launch",
-                "base launchpad",
-                "base fairlaunch",
-                "base community",
-                "base degen",
-                "base pump",
-                "base viral",
-                "base dog",
-                "base cat",
-                "base inu",
-                "base pepe",
-                "base moon",
-                "base token",
-                "base gem",
-                "base microcap",
-                "base smallcap",
                 "aerodrome",
                 "degen",
-                "higher",
                 "brett",
                 "toshi",
-                "virtual",
                 "clanker",
             ]
 

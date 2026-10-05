@@ -324,9 +324,17 @@ def api_status():
         "uptime_robot": "KEEPING ALIVE"
     })
 
+
+TELEGRAM_POLLING_ENABLED = os.getenv("TELEGRAM_POLLING_ENABLED", "true").strip().lower() in {"1","true","yes","on"}
+CLEANUP_POLLING_ENABLED = os.getenv("CLEANUP_POLLING_ENABLED", "false").strip().lower() in {"1","true","yes","on"}
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+
 def run_web():
+    if ENVIRONMENT == "production":
+        print("ℹ️ Production mode: dashboard should run via gunicorn (bot:app_web).")
+        return
     port = int(os.environ.get("PORT", 10000))
-    app_web.run(host='0.0.0.0', port=port)
+    app_web.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # =========================================
 # LOGGING
@@ -400,8 +408,11 @@ async def run_bot():
     print("✅ Telegram API connected")
     await app.start()
     print("✅ Application started")
-    await app.updater.start_polling(drop_pending_updates=True)
-    print("🚀 BOT YANA AIKI!")
+    if TELEGRAM_POLLING_ENABLED:
+        await app.updater.start_polling(drop_pending_updates=True)
+        print("🚀 BOT YANA AIKI!")
+    else:
+        print("ℹ️ Telegram polling disabled; this process is web-only.")
     print("📡 Waiting for Telegram messages...")
     if CLEANUP_BOT_TOKEN and CLEANUP_CHAT_ID:
         print("🧹 Starting Group Cleanup...")
@@ -411,7 +422,7 @@ async def run_bot():
             add_cleanup_handler(app, cleanup_service)
             await cleanup_service.diagnose()
             await cleanup_service.start()
-        else:
+        elif CLEANUP_POLLING_ENABLED:
             cleanup_request = HTTPXRequest(connect_timeout=30.0, read_timeout=60.0, write_timeout=60.0, pool_timeout=30.0, http_version="1.1", httpx_kwargs=telegram_httpx_kwargs)
             cleanup_get_updates_request = HTTPXRequest(connect_timeout=30.0, read_timeout=60.0, write_timeout=60.0, pool_timeout=30.0, http_version="1.1", httpx_kwargs=telegram_httpx_kwargs)
             cleanup_app = Application.builder().token(CLEANUP_BOT_TOKEN).request(cleanup_request).get_updates_request(cleanup_get_updates_request).build()
@@ -423,7 +434,10 @@ async def run_bot():
             if cleanup_app.updater:
                 await cleanup_app.updater.start_polling(drop_pending_updates=True)
             await cleanup_service.start()
-        print("🧹 Cleanup Bot is ACTIVE")
+        else:
+            print("⚠️ Separate cleanup polling disabled; use same BOT_TOKEN for single-instance cleanup.")
+        if cleanup_service:
+            print("🧹 Cleanup Bot is ACTIVE")
     else:
         print("⚠️ Group Cleanup Bot disabled.")
     if AUTO_SIGNAL_ENABLED and AUTO_SIGNAL_CHAT_ID:

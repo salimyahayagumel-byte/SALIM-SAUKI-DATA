@@ -341,6 +341,10 @@ class SecurityChecker:
         # Keyed by (chain, rpc_url) so Base, Robinhood and Arc
         # maintain independent rate-limit state.
         self._evm_rpc_cooldowns = {}
+        self._evm_rpc_rate_counts = {}
+        self._evm_rpc_last_call = {}
+        self.evm_rpc_min_interval = float(os.getenv("EVM_RPC_MIN_INTERVAL", "0.25"))
+        self.base_cooldown_seconds = 30.0
 
         # =====================================
         # BASE HONEYPOT SECURITY
@@ -649,9 +653,10 @@ class SecurityChecker:
 
             self._evm_rpc_cooldowns = {}
 
-        cooldown_seconds = 60.0
+        cooldown_seconds = self.base_cooldown_seconds
 
-        now = asyncio.get_running_loop().time()
+        loop = asyncio.get_running_loop()
+        now = loop.time()
 
         # =====================================
         # BUILD ORDERED RPC LIST
@@ -702,7 +707,7 @@ class SecurityChecker:
 
                 print(
                     f"⏳ {rpc_label} RPC cooldown: "
-                    f"{rpc_url} "
+                    f"{self._safe_rpc_url(rpc_url)} "
                     f"({remaining:.1f}s)"
                 )
 
@@ -713,14 +718,11 @@ class SecurityChecker:
             )
 
         # =====================================
-        # IF ALL RPCS ARE IN COOLDOWN
-        #
-        # Try the first configured RPC anyway.
-        # =====================================
-
+        # IF ALL RPCS ARE IN COOLDOWN, fail softly instead of
+        # hammering a rate-limited endpoint again.
         if not available_rpcs:
-
-            available_rpcs = ordered_rpcs
+            print(f"⏳ {rpc_label}: all RPC endpoints are cooling down")
+            return None
 
         # =====================================
         # TRY BASE RPC ENDPOINTS
@@ -737,6 +739,13 @@ class SecurityChecker:
             ):
 
                 try:
+                    # Pace requests per chain/endpoint to reduce provider 429s.
+                    rate_key = (chain_key, rpc_url)
+                    last_call = self._evm_rpc_last_call.get(rate_key, 0.0)
+                    wait_for = self.evm_rpc_min_interval - (loop.time() - last_call)
+                    if wait_for > 0:
+                        await asyncio.sleep(wait_for)
+                    self._evm_rpc_last_call[rate_key] = loop.time()
 
                     async with httpx.AsyncClient(
                         timeout=timeout,
@@ -757,13 +766,17 @@ class SecurityChecker:
                         # =================================
 
                         if response.status_code == 429:
-
-                            self._evm_rpc_cooldowns[
-                                (chain_key, rpc_url)
-                            ] = (
-                                now +
-                                cooldown_seconds
-                            )
+                            retry_after = response.headers.get("Retry-After", "").strip()
+                            try:
+                                retry_delay = max(1.0, min(float(retry_after), 300.0)) if retry_after else 0.0
+                            except ValueError:
+                                retry_delay = 0.0
+                            rate_key = (chain_key, rpc_url)
+                            count = self._evm_rpc_rate_counts.get(rate_key, 0) + 1
+                            self._evm_rpc_rate_counts[rate_key] = count
+                            if not retry_delay:
+                                retry_delay = min(300.0, cooldown_seconds * (2 ** min(count - 1, 3)))
+                            self._evm_rpc_cooldowns[rate_key] = loop.time() + retry_delay
 
                             last_error = (
                                 "HTTP 429 RATE LIMITED"
@@ -824,10 +837,8 @@ class SecurityChecker:
 
                             # Clear old cooldown after
                             # successful recovery.
-                            self._evm_rpc_cooldowns.pop(
-                                (chain_key, rpc_url),
-                                None
-                            )
+                            self._evm_rpc_cooldowns.pop((chain_key, rpc_url), None)
+                            self._evm_rpc_rate_counts.pop((chain_key, rpc_url), None)
 
                             print(
                                 f"✅ {rpc_label} RPC OK: "
@@ -862,7 +873,7 @@ class SecurityChecker:
                         f"⚠️ {rpc_label} RPC #{rpc_index} "
                         f"attempt {attempt} "
                         f"TIMEOUT/NETWORK:"
-                        f" {rpc_url}"
+                        f" {self._safe_rpc_url(rpc_url)}"
                     )
 
                 except Exception as exc:

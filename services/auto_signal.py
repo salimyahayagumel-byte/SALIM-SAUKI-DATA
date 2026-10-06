@@ -36,9 +36,13 @@ NOT FINANCIAL ADVICE.
 
 import asyncio
 from datetime import datetime
+import html
+import re
 import time
 from typing import Any, Dict, List, Set, Tuple
 from urllib.parse import quote
+
+from telegram.error import BadRequest
 
 from config import (
     AUTO_SIGNAL_MIN_SCORE,
@@ -819,41 +823,14 @@ class AutoSignalEngine:
                 # valid DexScreener image URL is available.
                 # If Telegram cannot fetch the image, fall back
                 # to the normal text message so the signal is not lost.
-                if image_url.startswith(
-                    ("http://", "https://")
-                ):
+                delivered = await self._deliver_signal(
+                    symbol=symbol,
+                    message=message,
+                    image_url=image_url,
+                )
 
-                    try:
-
-                        await self.bot.send_photo(
-                            chat_id=self.chat_id,
-                            photo=image_url,
-                            caption=message,
-                            parse_mode="HTML",
-                        )
-
-                    except Exception as image_exc:
-
-                        print(
-                            f"⚠️ Token image send failed "
-                            f"for ${symbol}: {image_exc}"
-                        )
-
-                        await self.bot.send_message(
-                            chat_id=self.chat_id,
-                            text=message,
-                            parse_mode="HTML",
-                            disable_web_page_preview=True,
-                        )
-
-                else:
-
-                    await self.bot.send_message(
-                        chat_id=self.chat_id,
-                        text=message,
-                        parse_mode="HTML",
-                        disable_web_page_preview=True,
-                    )
+                if not delivered:
+                    continue
 
             except Exception as exc:
 
@@ -2677,7 +2654,85 @@ class AutoSignalEngine:
     # HTML ATTRIBUTE ESCAPE
     # =========================================================
 
-    @staticmethod
+    async def send_text_plain(
+        self,
+        message,
+    ):
+        """
+        Send Telegram text without parse_mode after Telegram rejects
+        the HTML-formatted signal.
+        """
+        plain_text = html.unescape(
+            re.sub(r"<[^>]+>", "", str(message))
+        )
+
+        return await self.bot.send_message(
+            chat_id=self.chat_id,
+            text=plain_text,
+            disable_web_page_preview=True,
+        )
+
+    async def _deliver_signal(
+        self,
+        symbol,
+        message,
+        image_url="",
+    ):
+        """
+        Deliver one already-formatted signal.
+
+        Delivery order:
+            1. Token image + HTML caption.
+            2. HTML text message.
+            3. Plain-text fallback when Telegram rejects HTML.
+        """
+        try:
+            if str(image_url or "").strip().startswith(
+                ("http://", "https://")
+            ):
+                try:
+                    await self.bot.send_photo(
+                        chat_id=self.chat_id,
+                        photo=str(image_url).strip(),
+                        caption=message,
+                        parse_mode="HTML",
+                    )
+                    return True
+
+                except Exception as image_exc:
+                    print(
+                        f"⚠️ Token image send failed "
+                        f"for ${symbol}: {image_exc}"
+                    )
+
+            try:
+                await self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=message,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True,
+                )
+                return True
+
+            except BadRequest as html_exc:
+                print(
+                    f"⚠️ Telegram HTML rejected "
+                    f"for ${symbol}: {html_exc}"
+                )
+
+                await self.send_text_plain(message)
+                return True
+
+        except Exception as exc:
+            self.telegram_errors += 1
+
+            print(
+                f"❌ Telegram send error "
+                f"for ${symbol}: {exc}"
+            )
+
+            return False
+
     def _escape_attribute(
         value: str,
     ) -> str:
@@ -2722,26 +2777,11 @@ async def test_engine():
             parse_mode="HTML",
             disable_web_page_preview=True,
         ):
-
-            print(
-                "=" * 70
-            )
-
-            print(
-                "TELEGRAM TEST MESSAGE"
-            )
-
-            print(
-                "=" * 70
-            )
-
-            print(
-                text
-            )
-
-            print(
-                "=" * 70
-            )
+            print("=" * 70)
+            print("TELEGRAM TEST MESSAGE")
+            print("=" * 70)
+            print(text)
+            print("=" * 70)
 
     engine = AutoSignalEngine(
         bot=FakeBot(),

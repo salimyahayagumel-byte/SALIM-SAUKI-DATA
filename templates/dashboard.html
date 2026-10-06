@@ -71,6 +71,66 @@
             <p>When the Auto Signal Engine delivers a qualifying signal, it will appear here automatically.</p>
         </div>
     </section>
+
+
+    <!-- =========================================================
+         SALIM SAUKI DATA — CALL HISTORY / SEARCH / PNL
+         These sections are intentionally below the live signal feed.
+         ========================================================= -->
+    <section class="dashboard-tools-grid" aria-label="Token tools">
+        <!-- SEARCH BY CA -->
+        <article class="tool-panel" id="searchByCaSection">
+            <div class="tool-heading">
+                <div>
+                    <div class="eyebrow">DEXSCREENER LOOKUP</div>
+                    <h3>🔎 Search by CA</h3>
+                </div>
+                <span class="tool-live">LIVE</span>
+            </div>
+            <div class="ca-search-row">
+                <input id="caSearchInput" type="text" inputmode="text" autocomplete="off"
+                       placeholder="Paste Contract Address... (0x... for Base, or Solana address)">
+                <button id="caSearchButton" class="orange-button" type="button">Check Token</button>
+            </div>
+            <div id="caSearchStatus" class="tool-status">Enter a contract address to check it live on DEX.</div>
+            <div id="caSearchResult" class="ca-result empty-tool-state">
+                <span>🧭</span>
+                <p>Token lookup results will appear here.</p>
+            </div>
+        </article>
+
+        <!-- CALLED SIGNALS HISTORY -->
+        <article class="tool-panel tool-panel-wide" id="calledSignalsSection">
+            <div class="tool-heading">
+                <div>
+                    <div class="eyebrow">LOCAL PERSISTENT HISTORY</div>
+                    <h3>📜 Called Signals History</h3>
+                </div>
+                <div class="history-actions">
+                    <span id="calledSignalsCount" class="tool-count">0 saved</span>
+                    <button id="clearCalledSignals" class="ghost-button" type="button">Clear History</button>
+                </div>
+            </div>
+            <div id="calledSignalsList" class="history-table-wrap">
+                <div class="empty-tool-state"><span>📭</span><p>No called signals saved in this browser yet.</p></div>
+            </div>
+        </article>
+
+        <!-- PNL TRACKER -->
+        <article class="tool-panel tool-panel-wide" id="pnlTrackerSection">
+            <div class="tool-heading">
+                <div>
+                    <div class="eyebrow">DEX PRICE MONITOR</div>
+                    <h3>📈 PNL Tracker</h3>
+                </div>
+                <div class="pnl-meta"><span id="pnlUpdatedAt">—</span><span class="tool-live">30s REFRESH</span></div>
+            </div>
+            <div id="pnlList" class="pnl-list">
+                <div class="empty-tool-state"><span>📊</span><p>Called signals will be tracked here.</p></div>
+            </div>
+        </article>
+    </section>
+
 </main>
 
 <div id="detailModal" class="modal hidden" aria-hidden="true">

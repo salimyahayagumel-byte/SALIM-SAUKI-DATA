@@ -15,7 +15,10 @@ async function loadSignals() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = await response.json();
         state.signals = Array.isArray(payload.signals) ? payload.signals : [];
+        state.signals.forEach(addCalledSignal);
         render();
+        renderCalledSignalsHistory();
+        renderPnlTracker();
         const stamp = payload.updated_at ? new Date(payload.updated_at) : new Date();
         $("#lastUpdate").textContent = stamp.toLocaleTimeString();
     } catch (error) {
@@ -241,3 +244,367 @@ window.addEventListener("keydown", event => {
 
 loadSignals();
 setInterval(loadSignals, 10000);
+
+
+/* =========================================================
+   SALIM SAUKI DATA — SEARCH BY CA / CALLED HISTORY / PNL
+   Client-side additions only. Existing scanner/feed functions above
+   remain unchanged.
+   ========================================================= */
+const CALLED_SIGNALS_KEY = "salim_sauki_data_calledSignals";
+const PNL_REFRESH_MS = 30000;
+let pnlRefreshTimer = null;
+let pnlRefreshInFlight = false;
+
+function readCalledSignals() {
+    try {
+        const raw = localStorage.getItem(CALLED_SIGNALS_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+        console.warn("Called signals localStorage read failed:", error);
+        return [];
+    }
+}
+
+function writeCalledSignals(signals) {
+    try {
+        localStorage.setItem(CALLED_SIGNALS_KEY, JSON.stringify(signals.slice(0, 500)));
+    } catch (error) {
+        console.warn("Called signals localStorage write failed:", error);
+    }
+}
+
+function calledSignalKey(token) {
+    const chain = String(token?.chain || token?.chainId || "unknown").toLowerCase().trim();
+    const address = String(token?.address || token?.baseToken?.address || "").trim().toLowerCase();
+    return `${chain}:${address}`;
+}
+
+function addCalledSignal(token) {
+    if (!token || !token.address) return null;
+    const key = calledSignalKey(token);
+    if (key.endsWith(":")) return null;
+
+    const history = readCalledSignals();
+    const existing = history.find(item => item.key === key);
+    if (existing) return existing;
+
+    const entry = {
+        key,
+        time: Number(token.sent_at || token.called_at || Date.now() / 1000) * 1000,
+        symbol: String(token.symbol || "N/A"),
+        name: String(token.name || "Unknown Token"),
+        chain: String(token.chain || token.chainId || "unknown").toLowerCase(),
+        address: String(token.address || ""),
+        entryMc: Number(token.marketcap || token.fdv || token.market_cap || 0),
+        entryPrice: Number(token.price_usd || token.priceUsd || token.price || 0),
+        status: String(token.final_signal || token.final_status || token.status || "SIGNAL"),
+        chartUrl: String(token.url || token.pair_url || ""),
+        explorerUrl: String(token.explorer_url || explorerUrl(token) || "")
+    };
+
+    history.unshift(entry);
+    writeCalledSignals(history);
+    return entry;
+}
+
+window.addCalledSignal = addCalledSignal;
+
+function isCalledToken(token) {
+    const key = calledSignalKey(token);
+    return readCalledSignals().some(item => item.key === key);
+}
+
+function signalStatusClass(status) {
+    const value = String(status || "").toUpperCase();
+    if (value.includes("STRONG")) return "strong";
+    if (value.includes("GEM")) return "gem";
+    if (value.includes("EARLY")) return "early";
+    return "other";
+}
+
+function formatHistoryTime(value) {
+    const date = new Date(Number(value || 0));
+    return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+}
+
+function renderCalledSignalsHistory() {
+    const target = $("#calledSignalsList");
+    const count = $("#calledSignalsCount");
+    if (!target || !count) return;
+
+    const history = readCalledSignals();
+    count.textContent = `${history.length} saved`;
+
+    if (!history.length) {
+        target.innerHTML = `<div class="empty-tool-state"><span>📭</span><p>No called signals saved in this browser yet.</p></div>`;
+        return;
+    }
+
+    target.innerHTML = `<table class="history-table">
+        <thead><tr><th>TIME</th><th>SYMBOL</th><th>CHAIN</th><th>MC AT CALL</th><th>PRICE AT CALL</th><th>ADDRESS</th><th>STATUS</th></tr></thead>
+        <tbody>${history.map(item => `<tr>
+            <td class="muted-cell">${escapeHtml(formatHistoryTime(item.time))}</td>
+            <td class="symbol-cell">$${escapeHtml(item.symbol)}</td>
+            <td>${escapeHtml(chainLabel(item.chain))}</td>
+            <td>${money(item.entryMc)}</td>
+            <td>${formatTokenPrice(item.entryPrice)}</td>
+            <td><span class="called-link" title="${escapeHtml(item.address)}">${escapeHtml(shortAddress(item.address))}</span></td>
+            <td><span class="status-pill ${signalStatusClass(item.status)}">${escapeHtml(item.status)}</span></td>
+        </tr>`).join("")}</tbody>
+    </table>`;
+}
+
+function shortAddress(address) {
+    const value = String(address || "");
+    if (value.length <= 18) return value;
+    return `${value.slice(0, 8)}…${value.slice(-6)}`;
+}
+
+function formatTokenPrice(value) {
+    const n = Number(value || 0);
+    if (!Number.isFinite(n) || n <= 0) return "—";
+    if (n >= 1) return `$${n.toLocaleString(undefined, {maximumFractionDigits: 4})}`;
+    if (n >= 0.01) return `$${n.toFixed(5)}`;
+    if (n >= 0.000001) return `$${n.toFixed(8)}`;
+    return `$${n.toExponential(4)}`;
+}
+
+function pickDexPair(payload, address) {
+    const pairs = Array.isArray(payload?.pairs) ? payload.pairs : [];
+    const target = String(address || "").toLowerCase();
+    const matches = pairs.filter(pair => {
+        const base = String(pair?.baseToken?.address || "").toLowerCase();
+        const quote = String(pair?.quoteToken?.address || "").toLowerCase();
+        return base === target || quote === target;
+    });
+    const pool = matches.length ? matches : pairs;
+    return [...pool].sort((a, b) => Number(b?.liquidity?.usd || 0) - Number(a?.liquidity?.usd || 0))[0] || null;
+}
+
+function dexTokenFromPair(pair, address) {
+    if (!pair) return null;
+    const target = String(address || "").toLowerCase();
+    const base = pair.baseToken || {};
+    const quote = pair.quoteToken || {};
+    const baseIsTarget = String(base.address || "").toLowerCase() === target;
+    const token = baseIsTarget ? base : quote;
+    return {
+        name: token.name || pair.baseToken?.name || "Unknown Token",
+        symbol: token.symbol || pair.baseToken?.symbol || "N/A",
+        address: token.address || address,
+        chainId: pair.chainId || "unknown",
+        priceUsd: Number(baseIsTarget ? pair.priceUsd : pair.priceUsd || 0),
+        fdv: Number(pair.fdv || pair.marketCap || 0),
+        marketCap: Number(pair.marketCap || pair.fdv || 0),
+        liquidity: Number(pair.liquidity?.usd || 0),
+        volume24h: Number(pair.volume?.h24 || 0),
+        pairUrl: pair.url || "",
+        dexId: pair.dexId || "",
+        pairAddress: pair.pairAddress || "",
+        baseToken: base,
+        quoteToken: quote
+    };
+}
+
+async function fetchDexToken(address) {
+    const ca = String(address || "").trim();
+    if (!ca) throw new Error("Please paste a contract address.");
+    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(ca)}`, {
+        cache: "no-store",
+        headers: { "Accept": "application/json" }
+    });
+    if (!response.ok) throw new Error(`DexScreener HTTP ${response.status}`);
+    const payload = await response.json();
+    const pair = pickDexPair(payload, ca);
+    if (!pair) return null;
+    return { pair, token: dexTokenFromPair(pair, ca), pairsCount: Array.isArray(payload?.pairs) ? payload.pairs.length : 0 };
+}
+
+function renderCaResult(result) {
+    const target = $("#caSearchResult");
+    if (!target) return;
+    if (!result) {
+        target.className = "ca-result empty-tool-state";
+        target.innerHTML = `<span>❌</span><p>Token Not Found / Not Created on DEX</p>`;
+        return;
+    }
+
+    const { token, pair } = result;
+    const called = isCalledToken({ chain: token.chainId, address: token.address });
+    const calledBadge = called
+        ? `<span class="found-badge">✅ Already Called</span>`
+        : `<span class="not-called-badge">🆕 Not Called Before</span>`;
+    const pairLink = safeUrl(token.pairUrl);
+    const explorer = token.chainId === "solana"
+        ? `https://solscan.io/token/${encodeURIComponent(token.address)}`
+        : token.chainId === "base"
+            ? `https://basescan.org/token/${encodeURIComponent(token.address)}`
+            : "#";
+
+    target.className = "ca-result";
+    target.innerHTML = `<div class="ca-token-card">
+        <div class="ca-token-head">
+            <div class="ca-token-title"><strong>$${escapeHtml(token.symbol)}</strong><span>${escapeHtml(token.name)} · ${escapeHtml(chainLabel(token.chainId))}</span></div>
+            ${calledBadge}
+        </div>
+        <div class="tool-status success">✅ Token Found - LIVE on DEX · ${escapeHtml(token.dexId || "DEX")}</div>
+        <div class="ca-detail-grid">
+            <div><span>CHAIN ID</span><strong>${escapeHtml(token.chainId)}</strong></div>
+            <div><span>PRICE USD</span><strong>${formatTokenPrice(token.priceUsd)}</strong></div>
+            <div><span>FDV / MC</span><strong>${money(token.fdv)}</strong></div>
+            <div><span>LIQUIDITY</span><strong>${money(token.liquidity)}</strong></div>
+            <div><span>VOLUME 24H</span><strong>${money(token.volume24h)}</strong></div>
+            <div><span>PAIR</span><strong>${escapeHtml(shortAddress(token.pairAddress))}</strong></div>
+        </div>
+        <div class="ca-links">
+            ${pairLink !== "#" ? `<a href="${escapeHtml(pairLink)}" target="_blank" rel="noopener noreferrer">📊 Pair URL</a>` : ""}
+            ${explorer !== "#" ? `<a href="${escapeHtml(explorer)}" target="_blank" rel="noopener noreferrer">🔍 Explorer</a>` : ""}
+        </div>
+    </div>`;
+}
+
+async function searchByCa() {
+    const input = $("#caSearchInput");
+    const button = $("#caSearchButton");
+    const status = $("#caSearchStatus");
+    const value = String(input?.value || "").trim();
+    if (!status || !button) return;
+
+    if (!value) {
+        status.className = "tool-status error";
+        status.textContent = "Please paste a contract address.";
+        return;
+    }
+
+    button.disabled = true;
+    status.className = "tool-status loading";
+    status.textContent = "Checking DexScreener…";
+    try {
+        const result = await fetchDexToken(value);
+        renderCaResult(result);
+        if (result) {
+            status.className = "tool-status success";
+            status.textContent = "Token found and currently visible on DEX.";
+        } else {
+            status.className = "tool-status error";
+            status.textContent = "❌ Token Not Found / Not Created on DEX";
+        }
+    } catch (error) {
+        console.error("CA lookup error:", error);
+        status.className = "tool-status error";
+        status.textContent = `❌ Lookup failed: ${error.message || "Unknown error"}`;
+        renderCaResult(null);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function renderPnlTracker() {
+    const target = $("#pnlList");
+    if (!target) return;
+    const history = readCalledSignals();
+    if (!history.length) {
+        target.innerHTML = `<div class="empty-tool-state"><span>📊</span><p>Called signals will be tracked here.</p></div>`;
+        return;
+    }
+
+    const rows = history.map(item => `<div class="pnl-row" data-pnl-key="${escapeHtml(item.key)}">
+        <div class="pnl-cell"><small>SYMBOL</small><strong>$${escapeHtml(item.symbol)}</strong><span class="muted-cell">${escapeHtml(chainLabel(item.chain))}</span></div>
+        <div class="pnl-cell"><small>ENTRY MC</small><strong>${money(item.entryMc)}</strong></div>
+        <div class="pnl-cell"><small>CURRENT MC</small><strong class="pnl-current-mc">—</strong></div>
+        <div class="pnl-cell"><small>ENTRY PRICE</small><strong>${formatTokenPrice(item.entryPrice)}</strong></div>
+        <div class="pnl-cell"><small>PNL</small><strong class="pnl-value pnl-neutral">—</strong></div>
+        <a class="pnl-chart-link" href="${escapeHtml(safeUrl(item.chartUrl))}" target="_blank" rel="noopener noreferrer">Chart</a>
+    </div>`).join("");
+    target.innerHTML = rows;
+}
+
+async function refreshPnlTracker() {
+    if (pnlRefreshInFlight) return;
+    const history = readCalledSignals();
+    if (!history.length) {
+        renderPnlTracker();
+        return;
+    }
+
+    pnlRefreshInFlight = true;
+    const target = $("#pnlList");
+    if (target) target.classList.add("pnl-refreshing");
+
+    try {
+        const results = await Promise.all(history.map(async item => {
+            try {
+                const result = await fetchDexToken(item.address);
+                if (!result?.token) return { item, error: "No live pair" };
+                const token = result.token;
+                const currentMc = Number(token.marketCap || token.fdv || 0);
+                const entryMc = Number(item.entryMc || 0);
+                const pnl = entryMc > 0 && currentMc > 0 ? ((currentMc - entryMc) / entryMc) * 100 : null;
+                return { item, currentMc, currentPrice: Number(token.priceUsd || 0), pnl, chartUrl: token.pairUrl || item.chartUrl };
+            } catch (error) {
+                return { item, error: error.message || "Lookup failed" };
+            }
+        }));
+
+        results.sort((a, b) => {
+            const ap = Number.isFinite(a.pnl) ? a.pnl : -Infinity;
+            const bp = Number.isFinite(b.pnl) ? b.pnl : -Infinity;
+            return bp - ap;
+        });
+
+        if (!target) return;
+        if (!results.length) {
+            renderPnlTracker();
+            return;
+        }
+
+        target.innerHTML = results.map(result => {
+            const item = result.item;
+            const pnl = result.pnl;
+            const cls = Number.isFinite(pnl) ? (pnl > 0 ? "pnl-positive" : pnl < 0 ? "pnl-negative" : "pnl-neutral") : "pnl-neutral";
+            const pnlText = Number.isFinite(pnl) ? `${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}%` : "—";
+            const currentMc = Number.isFinite(result.currentMc) && result.currentMc > 0 ? money(result.currentMc) : "—";
+            const currentPrice = Number.isFinite(result.currentPrice) && result.currentPrice > 0 ? formatTokenPrice(result.currentPrice) : "—";
+            const chart = safeUrl(result.chartUrl || item.chartUrl);
+            return `<div class="pnl-row">
+                <div class="pnl-cell"><small>SYMBOL</small><strong>$${escapeHtml(item.symbol)}</strong><span class="muted-cell">${escapeHtml(chainLabel(item.chain))}</span></div>
+                <div class="pnl-cell"><small>ENTRY MC</small><strong>${money(item.entryMc)}</strong></div>
+                <div class="pnl-cell"><small>CURRENT MC</small><strong>${currentMc}</strong><span class="muted-cell">${currentPrice}</span></div>
+                <div class="pnl-cell"><small>ENTRY PRICE</small><strong>${formatTokenPrice(item.entryPrice)}</strong></div>
+                <div class="pnl-cell"><small>PNL</small><strong class="${cls}">${pnlText}</strong>${result.error ? `<span class="pnl-error">${escapeHtml(result.error)}</span>` : ""}</div>
+                <a class="pnl-chart-link" href="${escapeHtml(chart)}" target="_blank" rel="noopener noreferrer">Chart</a>
+            </div>`;
+        }).join("");
+
+        const stamp = $("#pnlUpdatedAt");
+        if (stamp) stamp.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    } finally {
+        pnlRefreshInFlight = false;
+        if (target) target.classList.remove("pnl-refreshing");
+    }
+}
+
+function initDashboardTools() {
+    renderCalledSignalsHistory();
+    renderPnlTracker();
+
+    $("#caSearchButton")?.addEventListener("click", searchByCa);
+    $("#caSearchInput")?.addEventListener("keydown", event => {
+        if (event.key === "Enter") searchByCa();
+    });
+    $("#clearCalledSignals")?.addEventListener("click", () => {
+        if (!readCalledSignals().length) return;
+        if (!window.confirm("Clear all locally saved called signals?")) return;
+        localStorage.removeItem(CALLED_SIGNALS_KEY);
+        renderCalledSignalsHistory();
+        renderPnlTracker();
+    });
+
+    refreshPnlTracker();
+    if (pnlRefreshTimer) clearInterval(pnlRefreshTimer);
+    pnlRefreshTimer = setInterval(refreshPnlTracker, PNL_REFRESH_MS);
+}
+
+initDashboardTools();

@@ -141,7 +141,7 @@ class SecurityChecker:
 
         if not flux_rpc and flux_key:
             flux_rpc = (
-                "https://cdn.fluxrpc.com"
+                "https://eu.fluxrpc.com"
                 f"?key={flux_key}"
             )
 

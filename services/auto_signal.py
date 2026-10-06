@@ -35,6 +35,8 @@ NOT FINANCIAL ADVICE.
 """
 
 import asyncio
+import html
+import re
 from datetime import datetime
 import time
 from typing import Any, Dict, List, Set, Tuple
@@ -894,22 +896,45 @@ class AutoSignalEngine:
     # =========================================================
 
     async def _deliver_signal(self, symbol: str, message: str, image_url: str = "") -> bool:
-        """Deliver one signal safely; return True only after Telegram accepts it."""
+        """Deliver one signal safely and confirm Telegram accepted the request.
+
+        Telegram can reject an otherwise valid signal for two independent reasons:
+        an image URL/caption problem or malformed HTML in the generated message.
+        The old implementation retried the same HTML payload after a BadRequest,
+        which could turn a formatting error into a permanent delivery failure.
+        We now fall back to a plain-text message before counting the delivery as
+        failed.
+        """
         chat_id = str(self.chat_id or "").strip()
         if not chat_id:
             self.telegram_errors += 1
             print(f"❌ Telegram delivery skipped for ${symbol}: chat_id is empty")
             return False
 
-        async def send_text():
+        async def send_text_html():
             await self.bot.send_message(
-                chat_id=self.chat_id, text=message, parse_mode="HTML",
+                chat_id=chat_id,
+                text=message,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+
+        async def send_text_plain():
+            # Telegram's plain-text fallback must not contain raw HTML markup.
+            plain = re.sub(r"<[^>]+>", "", str(message))
+            plain = html.unescape(plain)
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text=plain,
                 disable_web_page_preview=True,
             )
 
         async def send_photo():
             await self.bot.send_photo(
-                chat_id=self.chat_id, photo=image_url, caption=message, parse_mode="HTML"
+                chat_id=chat_id,
+                photo=image_url,
+                caption=message,
+                parse_mode="HTML",
             )
 
         for attempt in range(1, 3):
@@ -919,25 +944,63 @@ class AutoSignalEngine:
                         await send_photo()
                         return True
                     except (BadRequest, ValueError) as exc:
-                        print(f"⚠️ Token image failed for ${symbol}; text fallback: {exc}")
-                        await send_text()
-                        return True
-                await send_text()
-                return True
+                        # Image URL/caption can fail independently of text delivery.
+                        print(
+                            f"⚠️ Telegram photo failed for ${symbol}; "
+                            f"text fallback: {type(exc).__name__}: {exc}"
+                        )
+                        try:
+                            await send_text_html()
+                            return True
+                        except BadRequest as html_exc:
+                            # A malformed HTML entity/tag must not block a valid
+                            # signal. Deliver the same signal as plain text.
+                            print(
+                                f"⚠️ Telegram HTML rejected for ${symbol}; "
+                                f"plain-text fallback: {html_exc}"
+                            )
+                            await send_text_plain()
+                            return True
+
+                try:
+                    await send_text_html()
+                    return True
+                except BadRequest as html_exc:
+                    print(
+                        f"⚠️ Telegram HTML rejected for ${symbol}; "
+                        f"plain-text fallback: {html_exc}"
+                    )
+                    await send_text_plain()
+                    return True
+
             except RetryAfter as exc:
-                delay = max(1.0, min(30.0, float(getattr(exc, "retry_after", 1.0))))
-                print(f"⏳ Telegram 429 for ${symbol}; retry in {delay:.1f}s (attempt {attempt}/2)")
+                delay = max(
+                    1.0,
+                    min(30.0, float(getattr(exc, "retry_after", 1.0))),
+                )
+                print(
+                    f"⏳ Telegram 429 for ${symbol}; "
+                    f"retry in {delay:.1f}s (attempt {attempt}/2)"
+                )
                 if attempt < 2:
                     await asyncio.sleep(delay)
                     continue
+
             except (TimedOut, NetworkError) as exc:
                 delay = min(4.0, float(attempt))
-                print(f"⚠️ Telegram network error for ${symbol}: {exc}; retry in {delay:.1f}s")
+                print(
+                    f"⚠️ Telegram network error for ${symbol}: {exc}; "
+                    f"retry in {delay:.1f}s"
+                )
                 if attempt < 2:
                     await asyncio.sleep(delay)
                     continue
+
             except Exception as exc:
-                print(f"❌ Telegram delivery error for ${symbol}: {type(exc).__name__}: {exc}")
+                print(
+                    f"❌ Telegram delivery error for ${symbol}: "
+                    f"{type(exc).__name__}: {exc}"
+                )
                 break
 
         self.telegram_errors += 1

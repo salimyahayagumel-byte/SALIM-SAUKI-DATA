@@ -42,3 +42,55 @@ def test_final_signal_chain_security_and_market_cap_gates():
     assert '"arc": 69' in source
     assert "MIN_MARKET_CAP = 10_000" in source
     assert "MAX_MARKET_CAP = 1_000_000" in source
+
+def test_telegram_delivery_has_plain_text_fallback():
+    source = (ROOT / "services" / "auto_signal.py").read_text()
+    assert "async def send_text_plain" in source
+    assert "Telegram HTML rejected" in source
+    assert "html.unescape" in source
+    assert 're.sub(r"<[^>]+>", "", str(message))' in source
+
+
+
+def test_telegram_delivery_falls_back_to_plain_text():
+    import asyncio
+
+    from services.auto_signal import AutoSignalEngine, BadRequest
+
+    class FakeBot:
+        def __init__(self):
+            self.calls = []
+
+        async def send_photo(self, **kwargs):
+            self.calls.append(("photo", kwargs))
+            raise BadRequest("photo rejected")
+
+        async def send_message(self, **kwargs):
+            self.calls.append(("message", kwargs))
+            if kwargs.get("parse_mode") == "HTML":
+                raise BadRequest("HTML rejected")
+            return object()
+
+    async def exercise():
+        engine = object.__new__(AutoSignalEngine)
+        engine.chat_id = "-100123"
+        engine.telegram_errors = 0
+        engine.bot = FakeBot()
+
+        delivered = await engine._deliver_signal(
+            symbol="TEST",
+            message="<b>TEST</b> & bad",
+            image_url="https://example.com/image.png",
+        )
+        return delivered, engine.telegram_errors, engine.bot.calls
+
+    delivered, errors, calls = asyncio.run(exercise())
+
+    assert delivered is True
+    assert errors == 0
+    assert calls[0][0] == "photo"
+    assert calls[1][0] == "message"
+    assert calls[1][1]["parse_mode"] == "HTML"
+    assert calls[2][0] == "message"
+    assert "parse_mode" not in calls[2][1]
+    assert calls[2][1]["text"] == "TEST & bad"

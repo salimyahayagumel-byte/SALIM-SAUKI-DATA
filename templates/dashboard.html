@@ -42,7 +42,15 @@
         <div class="stat-card"><span>🎯 TOP SCORE</span><strong id="topScore">0</strong><small>Highest final score</small></div>
     </section>
 
-    <section class="toolbar">
+    <!-- KANANAN BUTTONS A SAMA - MASFO TABS -->
+    <section class="top-tabs" aria-label="Main views">
+        <button class="tab-button active" data-view="signals">📡 SIGNALS</button>
+        <button class="tab-button" data-view="search">🔎 SEARCH TOKEN</button>
+        <button class="tab-button" data-view="pnl">📈 PNL</button>
+        <button class="tab-button" data-view="history">📜 HISTORY</button>
+    </section>
+
+    <section class="toolbar" id="signalsFilters">
         <div class="toolbar-left">
             <button class="filter active" data-chain="all">ALL</button>
             <button class="filter" data-chain="solana">SOLANA</button>
@@ -56,29 +64,26 @@
         </div>
     </section>
 
-    <section class="section-heading">
-        <div>
-            <div class="eyebrow">LIVE SIGNAL FEED</div>
-            <h3>Latest GEM Signals</h3>
-        </div>
-        <span id="feedCount">0 signals</span>
-    </section>
+    <!-- VIEW 1: SIGNALS -->
+    <div id="view-signals" class="view-panel active">
+        <section class="section-heading">
+            <div>
+                <div class="eyebrow">LIVE SIGNAL FEED</div>
+                <h3>Latest GEM Signals</h3>
+            </div>
+            <span id="feedCount">0 signals</span>
+        </section>
+        <section id="signalGrid" class="signal-grid">
+            <div class="empty-state">
+                <div class="empty-icon">⚡</div>
+                <h3>Waiting for signals</h3>
+                <p>When the Auto Signal Engine delivers a qualifying signal, it will appear here automatically.</p>
+            </div>
+        </section>
+    </div>
 
-    <section id="signalGrid" class="signal-grid">
-        <div class="empty-state">
-            <div class="empty-icon">⚡</div>
-            <h3>Waiting for signals</h3>
-            <p>When the Auto Signal Engine delivers a qualifying signal, it will appear here automatically.</p>
-        </div>
-    </section>
-
-
-    <!-- =========================================================
-         SALIM SAUKI DATA — CALL HISTORY / SEARCH / PNL
-         These sections are intentionally below the live signal feed.
-         ========================================================= -->
-    <section class="dashboard-tools-grid" aria-label="Token tools">
-        <!-- SEARCH BY CA -->
+    <!-- VIEW 2: SEARCH TOKEN -->
+    <div id="view-search" class="view-panel">
         <article class="tool-panel" id="searchByCaSection">
             <div class="tool-heading">
                 <div>
@@ -98,8 +103,26 @@
                 <p>Token lookup results will appear here.</p>
             </div>
         </article>
+    </div>
 
-        <!-- CALLED SIGNALS HISTORY -->
+    <!-- VIEW 3: PNL -->
+    <div id="view-pnl" class="view-panel">
+        <article class="tool-panel tool-panel-wide" id="pnlTrackerSection">
+            <div class="tool-heading">
+                <div>
+                    <div class="eyebrow">DEX PRICE MONITOR</div>
+                    <h3>📈 PNL Tracker</h3>
+                </div>
+                <div class="pnl-meta"><span id="pnlUpdatedAt">—</span><span class="tool-live">30s REFRESH</span></div>
+            </div>
+            <div id="pnlList" class="pnl-list">
+                <div class="empty-tool-state"><span>📊</span><p>Called signals will be tracked here.</p></div>
+            </div>
+        </article>
+    </div>
+
+    <!-- VIEW 4: HISTORY -->
+    <div id="view-history" class="view-panel">
         <article class="tool-panel tool-panel-wide" id="calledSignalsSection">
             <div class="tool-heading">
                 <div>
@@ -115,21 +138,7 @@
                 <div class="empty-tool-state"><span>📭</span><p>No called signals saved in this browser yet.</p></div>
             </div>
         </article>
-
-        <!-- PNL TRACKER -->
-        <article class="tool-panel tool-panel-wide" id="pnlTrackerSection">
-            <div class="tool-heading">
-                <div>
-                    <div class="eyebrow">DEX PRICE MONITOR</div>
-                    <h3>📈 PNL Tracker</h3>
-                </div>
-                <div class="pnl-meta"><span id="pnlUpdatedAt">—</span><span class="tool-live">30s REFRESH</span></div>
-            </div>
-            <div id="pnlList" class="pnl-list">
-                <div class="empty-tool-state"><span>📊</span><p>Called signals will be tracked here.</p></div>
-            </div>
-        </article>
-    </section>
+    </div>
 
 </main>
 

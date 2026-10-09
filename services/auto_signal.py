@@ -55,6 +55,7 @@ from config import (
 from services.scanner import TokenScanner
 from services.history import SignalHistory
 from services.pnl_tracker import PNLTracker
+from services.dashboard_report import record_scan, record_signal
 
 
 class AutoSignalEngine:
@@ -516,6 +517,11 @@ class AutoSignalEngine:
                 f"{len(chain_results)}"
             )
 
+        try:
+            record_scan(len(results))
+        except Exception as exc:
+            print(f"⚠️ Dashboard report scan counter error: {exc}")
+
         self.last_scan_summary = {
             "scan": self.scan_count,
             "solana_candidates": len(chain_results_map.get("solana", [])),
@@ -872,6 +878,10 @@ class AutoSignalEngine:
             )
 
             self.signals_sent += 1
+            try:
+                record_signal(str(token.get("final_signal") or token.get("final_status") or "EARLY GEM"))
+            except Exception as exc:
+                print(f"⚠️ Dashboard report signal counter error: {exc}")
 
             # Start price-based PNL tracking only after Telegram delivery
             # succeeds, so failed signals never create fake entries.

@@ -4,6 +4,7 @@ import os
 import threading
 import sqlite3
 import time
+import uuid
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -44,6 +45,7 @@ from handlers.pnl import pnl
 from handlers.autostatus import autostatus
 
 from services.auto_signal import AutoSignalEngine
+from services.dashboard_report import report_if_due, restore_report
 from services.history import SignalHistory
 from services.group_cleanup import (
     GroupCleanupService,
@@ -57,6 +59,7 @@ from web.dashboard import load_dashboard, perform_scan
 # =========================================
 app_web = Flask(__name__)
 signal_history_store = SignalHistory(DATABASE_URL)
+DASHBOARD_BOOT_ID = uuid.uuid4().hex
 
 # Dashboard HTML
 DASHBOARD_HTML = """
@@ -204,6 +207,12 @@ def status_page():
 def dashboard_page():
     """Serve the full live scanner dashboard from the same web service."""
     return load_dashboard(), 200, {"Cache-Control": "no-cache, no-store, must-revalidate"}
+
+
+@app_web.route("/api/dashboard-cycle")
+def dashboard_cycle_status():
+    """Expose only this process boot ID so the browser can clear dashboard-only state after restart."""
+    return jsonify({"success": True, "boot_id": DASHBOARD_BOOT_ID}), 200, {"Cache-Control": "no-store"}
 
 
 @app_web.route("/ready")
@@ -382,8 +391,37 @@ async def start_auto_signals(application: Application):
     application.bot_data["auto_signal_engine"] = auto_signal_engine
     await auto_signal_engine.start()
 
+async def dashboard_report_loop(bot, chat_id):
+    """Send persisted aggregate report every 24h without deleting bot history."""
+    while True:
+        await asyncio.sleep(30)
+        report = report_if_due()
+        if not report:
+            continue
+        started = datetime.fromtimestamp(float(report["started_at"])).strftime("%Y-%m-%d %H:%M:%S")
+        message = (
+            "📊 <b>SALIM SAUKI DATA — 24-HOUR REPORT</b>\n\n"
+            f"🔎 Auto scans completed: <b>{int(report['scans'])}</b>\n"
+            f"🪙 Candidates found: <b>{int(report['candidates_found'])}</b>\n"
+            f"📨 Signals sent: <b>{int(report['signals_sent'])}</b>\n"
+            f"🚀 STRONG GEM: <b>{int(report['strong_gem'])}</b>\n"
+            f"💎 GEM SIGNAL: <b>{int(report['gem_signal'])}</b>\n"
+            f"🌱 EARLY GEM: <b>{int(report['early_gem'])}</b>\n\n"
+            f"🕒 Cycle started: {started}\n"
+            "🔄 A new 24-hour reporting cycle has started.\n"
+            "Dashboard-only history resets separately; bot signal and PNL databases are preserved."
+        )
+        try:
+            await bot.send_message(chat_id=chat_id, text=message, parse_mode="HTML", disable_web_page_preview=True)
+        except Exception as exc:
+            restore_report(report)
+            logging.error("24-hour dashboard report Telegram send failed; counters restored: %s", exc)
+            await asyncio.sleep(60)
+
+
 async def run_bot():
     global auto_signal_task, auto_signal_engine, cleanup_app, cleanup_service, cleanup_uses_main_app
+    dashboard_report_task = None
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN baya cikin.env")
     telegram_httpx_kwargs = {"trust_env": False, "http2": False}
@@ -440,6 +478,9 @@ async def run_bot():
             print("🧹 Cleanup Bot is ACTIVE")
     else:
         print("⚠️ Group Cleanup Bot disabled.")
+    if AUTO_SIGNAL_CHAT_ID:
+        dashboard_report_task = asyncio.create_task(dashboard_report_loop(app.bot, AUTO_SIGNAL_CHAT_ID))
+        print("📊 24-hour Telegram report scheduler started.")
     if AUTO_SIGNAL_ENABLED and AUTO_SIGNAL_CHAT_ID:
         print("🚀 Starting Auto Signal Engine...")
         auto_signal_task = asyncio.create_task(start_auto_signals(app))
@@ -454,6 +495,12 @@ async def run_bot():
         print("\n🛑 Bot stopped by user.")
     finally:
         print("⏳ Shutting down...")
+        if dashboard_report_task and not dashboard_report_task.done():
+            dashboard_report_task.cancel()
+            try:
+                await dashboard_report_task
+            except asyncio.CancelledError:
+                pass
         if auto_signal_engine:
             auto_signal_engine.stop()
         if auto_signal_task and not auto_signal_task.done():

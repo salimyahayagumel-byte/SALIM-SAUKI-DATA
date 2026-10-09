@@ -14,7 +14,13 @@ async function loadSignals() {
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = await response.json();
-        state.signals = Array.isArray(payload.signals)? payload.signals : [];
+        if (!dashboardCycleReady) await ensureDashboardCycle();
+        const receivedSignals = Array.isArray(payload.signals) ? payload.signals : [];
+        state.signals = receivedSignals.filter(token => {
+            const raw = Number(token.sent_at || 0);
+            const sentAtMs = raw > 0 ? (raw < 100000000000 ? raw * 1000 : raw) : 0;
+            return sentAtMs >= dashboardCycleStart;
+        });
         state.signals.forEach(addCalledSignal);
         render();
         renderCalledSignalsHistory();
@@ -154,7 +160,51 @@ setInterval(loadSignals, 10000);
 
 // MASFO TOOLS
 const CALLED_SIGNALS_KEY = "salim_sauki_data_calledSignals";
+const DASHBOARD_CYCLE_KEY = "salim_sauki_data_dashboardCycleStartedAt";
+const DASHBOARD_BOOT_KEY = "salim_sauki_data_dashboardBootId";
+const DASHBOARD_CYCLE_MS = 24 * 60 * 60 * 1000;
+let dashboardCycleStart = 0;
+let dashboardBootId = "";
+let dashboardCycleReady = false;
 const PNL_REFRESH_MS = 30000;
+
+function clearDashboardOnlyHistory() {
+    try { localStorage.removeItem(CALLED_SIGNALS_KEY); } catch {}
+    renderCalledSignalsHistory();
+    renderPnlTracker();
+}
+
+async function ensureDashboardCycle() {
+    const now = Date.now();
+    let savedStart = 0;
+    try { savedStart = Number(localStorage.getItem(DASHBOARD_CYCLE_KEY) || 0); } catch {}
+    if (!savedStart || now - savedStart >= DASHBOARD_CYCLE_MS) {
+        clearDashboardOnlyHistory();
+        savedStart = now;
+        try { localStorage.setItem(DASHBOARD_CYCLE_KEY, String(savedStart)); } catch {}
+    }
+    dashboardCycleStart = savedStart;
+    try {
+        const response = await fetch("/api/dashboard-cycle", { cache: "no-store", headers: { "Accept": "application/json" } });
+        if (response.ok) {
+            const payload = await response.json();
+            const incomingBootId = String(payload.boot_id || "");
+            const previousBootId = localStorage.getItem(DASHBOARD_BOOT_KEY) || "";
+            if (incomingBootId && previousBootId && incomingBootId !== previousBootId) {
+                clearDashboardOnlyHistory();
+                dashboardCycleStart = Date.now();
+                localStorage.setItem(DASHBOARD_CYCLE_KEY, String(dashboardCycleStart));
+            }
+            if (incomingBootId) {
+                dashboardBootId = incomingBootId;
+                localStorage.setItem(DASHBOARD_BOOT_KEY, incomingBootId);
+            }
+        }
+    } catch (error) {
+        console.warn("Dashboard cycle status unavailable:", error);
+    }
+    dashboardCycleReady = true;
+}
 let pnlRefreshTimer = null;
 let pnlRefreshInFlight = false;
 function readCalledSignals() { try { const raw = localStorage.getItem(CALLED_SIGNALS_KEY); const parsed = raw? JSON.parse(raw) : []; return Array.isArray(parsed)? parsed : []; } catch { return []; } }

@@ -35,7 +35,7 @@ from services.dexscreener import DexScreener
 class PNLTracker:
 
     DEFAULT_INTERVAL = 60
-    DEFAULT_MILESTONES = (10, 25, 50, 100, 200, 500, 1000)
+    DEFAULT_MILESTONES = (10, 25, 50, 100, 200, 300, 400, 500, 900, 1000)
     DEFAULT_MAX_TRACKED = 500
     DEFAULT_DRAWDOWN_ALERT = 20.0
 
@@ -534,15 +534,25 @@ class PNLTracker:
         new_milestone = self._highest_reached(pnl)
         stored_milestone = max(old_milestone, new_milestone)
 
+        highest_price = max(self._number(row.get("highest_price")), current_price)
         self._update_row(
             signal_key=row["signal_key"],
             current_market_cap=market_cap,
             highest_market_cap=highest_mc,
             current_price=current_price,
-            highest_price=max(self._number(row.get("highest_price")), current_price),
+            highest_price=highest_price,
             highest_pnl=highest_pnl,
             last_milestone=stored_milestone,
         )
+
+        # Keep the in-memory row in sync so the Telegram message reports
+        # the actual updated peak, not the stale values loaded before this tick.
+        row["current_market_cap"] = market_cap
+        row["highest_market_cap"] = highest_mc
+        row["current_price"] = current_price
+        row["highest_price"] = highest_price
+        row["highest_pnl"] = highest_pnl
+        row["last_milestone"] = stored_milestone
 
         if new_milestone > old_milestone:
             await self._send_update(
@@ -660,7 +670,7 @@ class PNLTracker:
                 f"{self._format_money(current_market_cap)}</b>"
             )
 
-        message = "\\n".join(
+        message = "\n".join(
             [
                 title,
                 "━━━━━━━━━━━━━━━━━━━━",

@@ -4,3 +4,4 @@ services/__pycache__/
 *.db
 *.log
 cleanup_messages.db
+salim_sauki_data.db

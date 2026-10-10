@@ -1,5 +1,5 @@
 """
-SALIM SAUKI DATA
+MASFOX
 DEX ANALYSIS BOT
 CENTRAL CONFIGURATION
 
@@ -747,7 +747,7 @@ LOG_LEVEL = os.getenv(
 
 BOT_NAME = os.getenv(
     "BOT_NAME",
-    "SALIM SAUKI DATA",
+    "MASFOX",
 ).strip()
 
 ADMIN_USERNAME = os.getenv(

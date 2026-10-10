@@ -1,5 +1,5 @@
 """
-SALIM SAUKI DATA
+MASFOX
 GROUP AUTO-CLEANUP BOT SERVICE
 
 Deletes messages from one configured Telegram group after a delay.

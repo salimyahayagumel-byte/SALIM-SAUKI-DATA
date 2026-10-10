@@ -1,4 +1,4 @@
-# SALIM SAUKI DATA V10 — Multi-Chain Signal Integrity
+# MASFOX V10 — Multi-Chain Signal Integrity
 
 V10 keeps the V9.3 relaxed discovery architecture while fixing signal-label ambiguity and strengthening the final signal gate.
 

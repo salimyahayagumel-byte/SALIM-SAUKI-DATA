@@ -1,5 +1,5 @@
 """
-SALIM SAUKI DATA
+MASFOX
 PNL TRACKER V9.2
 
 Market-cap-based PNL tracking for successfully delivered GEM signals. Price is retained as supporting market data.
@@ -615,9 +615,9 @@ class PNLTracker:
         )
 
         title = (
-            "📉 <b>SALIM SAUKI DATA — DRAWDOWN ALERT</b>"
+            "📉 <b>MASFOX — DRAWDOWN ALERT</b>"
             if alert_type == "drawdown"
-            else "📈 <b>SALIM SAUKI DATA — PNL UPDATE</b>"
+            else "📈 <b>MASFOX — PNL UPDATE</b>"
         )
 
         milestone_line = (
@@ -1015,7 +1015,7 @@ class PNLTracker:
         )
 
         lines = [
-            "📊 <b>SALIM SAUKI DATA — PNL SUMMARY</b>",
+            "📊 <b>MASFOX — PNL SUMMARY</b>",
             "━━━━━━━━━━━━━━━━━━━━",
             f"📦 Tracked: <b>{stats['total']}</b>",
             f"🟢 Winners: <b>{stats['winners']}</b>",

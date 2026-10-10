@@ -1,5 +1,5 @@
 """
-SALIM SAUKI DATA
+MASFOX
 DEX ANALYSIS BOT
 AUTO TELEGRAM SIGNAL ENGINE V7.2 PRO CARD
 
@@ -257,7 +257,7 @@ class AutoSignalEngine:
         )
 
         print(
-            "💎 SALIM SAUKI DATA — AUTO SIGNAL"
+            "💎 MASFOX — AUTO SIGNAL"
         )
 
         print(
@@ -372,7 +372,7 @@ class AutoSignalEngine:
             print(f"⚠️ PNL tracker stop error: {exc}")
 
         print(
-            "🛑 SALIM SAUKI DATA — "
+            "🛑 MASFOX — "
             "AUTO SIGNAL ENGINE STOPPED"
         )
 
@@ -1861,7 +1861,7 @@ class AutoSignalEngine:
         cls,
         token: Dict[str, Any],
     ) -> str:
-        """Build the premium SALIM SAUKI DATA GEM RADAR Telegram card.
+        """Build the premium MASFOX GEM RADAR Telegram card.
 
         Only real data already present in the scanner token is displayed.
         No unsupported security, liquidity-lock, holder, developer, or
@@ -2192,7 +2192,7 @@ class AutoSignalEngine:
         # -----------------------------------------------------
 
         lines = [
-            "🔥 <b>SALIM SAUKI DATA || GEM RADAR</b>",
+            "🔥 <b>MASFOX || GEM RADAR</b>",
             "━━━━━━━━━━━━━━━━━━━━━━━",
             "",
             f"{signal_icon} <b>${symbol} — {name}</b>",
@@ -2510,7 +2510,7 @@ class AutoSignalEngine:
             "",
             "━━━━━━━━━━━━━━━━━━━━━━━",
             "⚠️ <i>DYOR — Not Financial Advice</i>",
-            "🤖 <b>SALIM SAUKI DATA AI</b>",
+            "🤖 <b>MASFOX AI</b>",
         ])
 
         message = "\n".join(lines)
@@ -2521,7 +2521,7 @@ class AutoSignalEngine:
 
         if len(message) > 1000:
             essential = [
-                "🔥 <b>SALIM SAUKI DATA || GEM RADAR</b>",
+                "🔥 <b>MASFOX || GEM RADAR</b>",
                 "━━━━━━━━━━━━━━━━━━━━━━━",
                 f"{signal_icon} <b>${symbol} — {name}</b>",
                 f"⛓️ <b>{chain_name}</b> | {signal_label}",

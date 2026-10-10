@@ -1,6 +1,6 @@
-# SALIM SAUKI DATA — V10 Multi-Chain DEX Analysis Bot
+# MASFOX — V10 Multi-Chain DEX Analysis Bot
 
-SALIM SAUKI DATA is a Telegram-based multi-chain token-analysis system. It combines DexScreener discovery, market filters, AI/GEM scoring, security analysis, final-signal validation, Telegram delivery, PNL tracking, group cleanup, API health checks, and a web dashboard.
+MASFOX is a Telegram-based multi-chain token-analysis system. It combines DexScreener discovery, market filters, AI/GEM scoring, security analysis, final-signal validation, Telegram delivery, PNL tracking, group cleanup, API health checks, and a web dashboard.
 
 > ⚠️ This software provides automated market/security analysis. It is not financial advice and does not guarantee profit or token safety.
 
@@ -101,7 +101,7 @@ Robinhood Chain and Arc use chain-aware discovery and security handling. Unsuppo
 
 ## GEM RADAR message
 
-Auto signals use the premium `SALIM SAUKI DATA || GEM RADAR` format. Messages include real token/market data when available, AI/GEM/security/final scores, signal classification, contract and available external links.
+Auto signals use the premium `MASFOX || GEM RADAR` format. Messages include real token/market data when available, AI/GEM/security/final scores, signal classification, contract and available external links.
 
 The formatter avoids claiming unsupported facts such as liquidity being locked unless the underlying data actually confirms it.
 

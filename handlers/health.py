@@ -118,7 +118,7 @@ async def health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     lines = [
-        "🩺 SALIM SAUKI DATA — API HEALTH",
+        "🩺 MASFOX — API HEALTH",
         "━━━━━━━━━━━━━━━━━━━━",
     ]
 

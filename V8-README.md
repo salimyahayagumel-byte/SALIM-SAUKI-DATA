@@ -1,4 +1,4 @@
-# SALIM SAUKI DATA V8 — Multi-Language Foundation
+# MASFOX V8 — Multi-Language Foundation
 
 V8 keeps the existing Python Telegram/DEX engine intact and adds TypeScript as a separate API/dashboard layer.
 

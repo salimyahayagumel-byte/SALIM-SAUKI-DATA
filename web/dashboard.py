@@ -27,7 +27,7 @@ from services.history import SignalHistory
 
 
 # =========================================================
-# SALIM SAUKI DATA
+# MASFOX
 # WEB DASHBOARD SERVER
 # NO FASTAPI
 # NO UVICORN
@@ -228,10 +228,10 @@ def load_dashboard():
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>SALIM SAUKI DATA</title>
+    <title>MASFOX</title>
 </head>
 <body>
-    <h1>SALIM SAUKI DATA</h1>
+    <h1>MASFOX</h1>
     <p>dashboard.html not found.</p>
 </body>
 </html>
@@ -252,10 +252,10 @@ def load_dashboard():
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>SALIM SAUKI DATA</title>
+    <title>MASFOX</title>
 </head>
 <body>
-    <h1>SALIM SAUKI DATA</h1>
+    <h1>MASFOX</h1>
     <p>Dashboard loading error: {str(exc)}</p>
 </body>
 </html>
@@ -451,7 +451,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 {
                     "success": True,
                     "status": "online",
-                    "bot": "SALIM SAUKI DATA",
+                    "bot": "MASFOX",
                     "scanner": "online",
                     "signal_history": signal_history.count(),
                 },
@@ -465,7 +465,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 {
                     "success": True,
                     "status": "ready",
-                    "bot": "SALIM SAUKI DATA",
+                    "bot": "MASFOX",
                     "scanner": "online",
                     "signal_history": signal_history.count(),
                 },
@@ -849,7 +849,7 @@ def main():
     )
 
     print(
-        "🧠 SALIM SAUKI DATA"
+        "🧠 MASFOX"
     )
 
     print(

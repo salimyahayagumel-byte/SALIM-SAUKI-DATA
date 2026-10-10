@@ -21,7 +21,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if engine is None:
         text = (
-            "🤖 SALIM SAUKI DATA STATUS\n"
+            "🤖 MASFOX STATUS\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"⚙️ Auto Signal: {'ON' if AUTO_SIGNAL_ENABLED else 'OFF'}\n"
             f"📡 Chat ID: {'SET' if AUTO_SIGNAL_CHAT_ID else 'NOT SET'}\n"
@@ -31,7 +31,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         text = (
-            "🤖 SALIM SAUKI DATA STATUS\n"
+            "🤖 MASFOX STATUS\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"⚙️ Auto Signal: {'ON' if engine.running else 'OFF'}\n"
             f"🔎 Scans: {engine.scan_count}\n"

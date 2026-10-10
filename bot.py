@@ -66,7 +66,7 @@ DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SALIM SAUKI DATA - LIVE</title>
+    <title>MASFOX - LIVE</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="refresh" content="30">
     <style>
@@ -90,7 +90,7 @@ DASHBOARD_HTML = """
 </head>
 <body>
     <div class="header">
-        <h1>💎 SALIM SAUKI DATA</h1>
+        <h1>💎 MASFOX</h1>
         <p><span class="live">● LIVE</span> - Bot is running 24/7</p>
         <p style="font-size:12px;margin-top:8px;opacity:0.7">Last Update: __TIME__ | Auto-Refresh 30s</p>
     </div>
@@ -141,7 +141,7 @@ DASHBOARD_HTML = """
     </div>
 
     <div class="footer">
-        SALIM SAUKI DATA © 2026 - Running 24/7 on Render.com
+        MASFOX © 2026 - Running 24/7 on Render.com
     </div>
 </body>
 </html>
@@ -221,7 +221,7 @@ def readiness_check():
     return jsonify({
         "success": True,
         "ready": True,
-        "service": "SALIM SAUKI DATA",
+        "service": "MASFOX",
     }), 200
 
 
@@ -261,7 +261,7 @@ def dashboard_health_check():
     return jsonify({
         "success": True,
         "status": "online",
-        "bot": "SALIM SAUKI DATA",
+        "bot": "MASFOX",
         "scanner": "online",
     }), 200
 
@@ -314,7 +314,7 @@ def health_check():
 def api_status():
     cleanup_count, pnl_count = get_db_counts()
     return jsonify({
-        "bot": "SALIM SAUKI DATA",
+        "bot": "MASFOX",
         "status": "LIVE",
         "timestamp": datetime.now().isoformat(),
         "auto_signal": {
@@ -400,7 +400,7 @@ async def dashboard_report_loop(bot, chat_id):
             continue
         started = datetime.fromtimestamp(float(report["started_at"])).strftime("%Y-%m-%d %H:%M:%S")
         message = (
-            "📊 <b>SALIM SAUKI DATA — 24-HOUR REPORT</b>\n\n"
+            "📊 <b>MASFOX — 24-HOUR REPORT</b>\n\n"
             f"🔎 Auto scans completed: <b>{int(report['scans'])}</b>\n"
             f"🪙 Candidates found: <b>{int(report['candidates_found'])}</b>\n"
             f"📨 Signals sent: <b>{int(report['signals_sent'])}</b>\n"

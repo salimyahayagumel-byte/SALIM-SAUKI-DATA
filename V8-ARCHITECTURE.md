@@ -1,4 +1,4 @@
-# SALIM SAUKI DATA V8 Architecture
+# MASFOX V8 Architecture
 
 Python remains the trusted analysis engine. TypeScript is an additive API layer.
 

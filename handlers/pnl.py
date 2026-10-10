@@ -37,13 +37,13 @@ async def pnl(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = tracker.format_pnl_summary(tracker.get_tracked(None))
         elif not rows:
             text = (
-                "📈 <b>SALIM SAUKI DATA — PNL</b>\n"
+                "📈 <b>MASFOX — PNL</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"ℹ️ Babu token a cikin filter: <b>{PNLTracker._escape(lowered)}</b>"
             )
         else:
             text = (
-                "📈 <b>SALIM SAUKI DATA — PNL FILTER</b>\n"
+                "📈 <b>MASFOX — PNL FILTER</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"🔎 Filter: <b>{PNLTracker._escape(lowered.upper())}</b>\n\n"
                 + "\n━━━━━━━━━━━━━━━━━━━━\n".join(
@@ -69,7 +69,7 @@ async def pnl(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not rows:
         await update.message.reply_text(
-            "📈 <b>SALIM SAUKI DATA — PNL</b>\n"
+            "📈 <b>MASFOX — PNL</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "ℹ️ Babu token da aka fara tracking tukuna.\n"
             "Za a fara tracking ne bayan bot ya aika GEM signal.\n\n"
@@ -79,9 +79,9 @@ async def pnl(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     title = (
-        "📈 <b>SALIM SAUKI DATA — TOKEN PNL</b>"
+        "📈 <b>MASFOX — TOKEN PNL</b>"
         if argument
-        else "📈 <b>SALIM SAUKI DATA — ALL PNL</b>"
+        else "📈 <b>MASFOX — ALL PNL</b>"
     )
 
     parts = [title, "━━━━━━━━━━━━━━━━━━━━"]

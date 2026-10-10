@@ -7,7 +7,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "🤖 SALIM SAUKI DATA\n"
+        "🤖 MASFOX\n"
         "🧠 Multi-chain DEX Analysis Bot\n\n"
         "📌 Commands:\n"
         "/start — Fara bot\n"

@@ -1,5 +1,5 @@
 """
-SALIM SAUKI DATA
+MASFOX
 Persistent auto-signal history.
 
 The in-memory cooldown cache is useful for speed, but it disappears when

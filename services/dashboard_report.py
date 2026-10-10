@@ -1,4 +1,4 @@
-"""Persistent 24-hour Telegram summary counters for SALIM SAUKI DATA.
+"""Persistent 24-hour Telegram summary counters for MASFOX.
 
 This database is deliberately separate from signal history and PNL databases.
 It records only aggregate reporting counters and never deletes bot history.

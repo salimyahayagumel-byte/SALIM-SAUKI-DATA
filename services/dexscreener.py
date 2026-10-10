@@ -55,7 +55,7 @@ class DexScreener:
                 "DEXSCREENER_USER_AGENT",
                 "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36 "
-                "SALIM-SAUKI-DATA/10.4",
+                "MASFOX/10.4",
             ),
         }
 

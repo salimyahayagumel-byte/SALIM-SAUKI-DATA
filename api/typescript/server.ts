@@ -49,7 +49,7 @@ async function handler(req: IncomingMessage, res: ServerResponse): Promise<void>
   if (url.pathname === "/api/v8/health") {
     send(res, 200, {
       success: true,
-      service: "SALIM SAUKI DATA TypeScript API",
+      service: "MASFOX TypeScript API",
       version: "V8",
       runtime: "Node.js + TypeScript",
       pythonDashboard: PYTHON_DASHBOARD,
@@ -98,7 +98,7 @@ createServer((req, res) => {
   });
 }).listen(PORT, HOST, () => {
   console.log("========================================");
-  console.log("SALIM SAUKI DATA V8 TypeScript API");
+  console.log("MASFOX V8 TypeScript API");
   console.log("========================================");
   console.log(`Listening: http://${HOST}:${PORT}`);
   console.log(`Python dashboard: ${PYTHON_DASHBOARD}`);

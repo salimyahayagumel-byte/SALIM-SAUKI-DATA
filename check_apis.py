@@ -1,5 +1,5 @@
 """
-SALIM SAUKI DATA
+MASFOX
 V10 API / RPC Health Checker
 
 Rules:
@@ -94,7 +94,7 @@ def post_jsonrpc(url, method, params=None):
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "SALIM-SAUKI-DATA-HealthCheck/10.4",
+                "User-Agent": "MASFOX-HealthCheck/10.4",
             },
         )
 
@@ -250,7 +250,7 @@ def check_http(name, url, required=True):
             timeout=TIMEOUT,
             headers={
                 "Accept": "application/json,text/plain,*/*",
-                "User-Agent": "SALIM-SAUKI-DATA-HealthCheck/10.4",
+                "User-Agent": "MASFOX-HealthCheck/10.4",
             },
         )
 
@@ -305,7 +305,7 @@ def print_result(result):
 
 def main():
     print("=" * 58)
-    print("🩺 SALIM SAUKI DATA — V10 API / RPC HEALTH CHECK")
+    print("🩺 MASFOX — V10 API / RPC HEALTH CHECK")
     print("=" * 58)
 
     results = []

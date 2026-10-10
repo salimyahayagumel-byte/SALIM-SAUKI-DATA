@@ -639,20 +639,44 @@ class PNLTracker:
                 f"</code>"
             )
 
-        message = "\n".join(
+        entry_mc = self._number(row.get("entry_market_cap"))
+        if pnl >= 0:
+            money_emojis = "💸" * min(12, max(1, int(pnl // 100) + 1))
+            profit_headline = (
+                f"📈 <b>${self._escape(symbol)} is up {multiplier:.2f}X "
+                "from Entry Signal</b>"
+            )
+            profit_amount = (
+                f"💰 <b>{self._format_money(entry_mc)} → "
+                f"{self._format_money(current_market_cap)}</b> {money_emojis}"
+            )
+        else:
+            profit_headline = (
+                f"📉 <b>${self._escape(symbol)} is down {abs(pnl):.1f}% "
+                "from Entry Signal</b>"
+            )
+            profit_amount = (
+                f"💰 <b>{self._format_money(entry_mc)} → "
+                f"{self._format_money(current_market_cap)}</b>"
+            )
+
+        message = "\\n".join(
             [
                 title,
+                "━━━━━━━━━━━━━━━━━━━━",
+                profit_headline,
+                profit_amount,
+                f"📊 <b>PNL: {pnl:+.1f}%</b> | Multiple: <b>{multiplier:.2f}X</b>",
                 "━━━━━━━━━━━━━━━━━━━━",
                 chain_label,
                 "",
                 "💰 <b>MARKET CAP</b>",
-                f"┗ Entry MC: <b>{self._format_money(row['entry_market_cap'])}</b>",
+                f"┗ Entry MC: <b>{self._format_money(entry_mc)}</b>",
                 f"┗ Current MC: <b>{self._format_money(current_market_cap)}</b>",
                 "",
-                "📊 <b>PNL</b>",
+                "📊 <b>PNL DETAILS</b>",
                 f"┗ Current PNL: <b>{pnl:+.1f}%</b>",
                 milestone_line,
-                f"┗ Multiple: <b>{multiplier:.2f}X</b>",
                 f"┗ Best PNL: <b>+{highest_pnl:.1f}%</b>",
                 f"┗ Best MC: <b>{self._format_money(row.get('highest_market_cap'))}</b>",
                 (

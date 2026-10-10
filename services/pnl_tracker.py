@@ -615,9 +615,9 @@ class PNLTracker:
         )
 
         title = (
-            "📉 <b>MASFOX — DRAWDOWN ALERT</b>"
+            f"📉 <b>${self._escape(symbol)} — DRAWDOWN ALERT</b>"
             if alert_type == "drawdown"
-            else "📈 <b>MASFOX — PNL UPDATE</b>"
+            else f"📈 <b>${self._escape(symbol)} — PNL UPDATE</b>"
         )
 
         milestone_line = (
@@ -643,7 +643,6 @@ class PNLTracker:
             [
                 title,
                 "━━━━━━━━━━━━━━━━━━━━",
-                f"🟢 <b>${self._escape(symbol)}</b>",
                 chain_label,
                 "",
                 "💰 <b>MARKET CAP</b>",
@@ -1015,7 +1014,7 @@ class PNLTracker:
         )
 
         lines = [
-            "📊 <b>MASFOX — PNL SUMMARY</b>",
+            "📊 <b>PNL SUMMARY</b>",
             "━━━━━━━━━━━━━━━━━━━━",
             f"📦 Tracked: <b>{stats['total']}</b>",
             f"🟢 Winners: <b>{stats['winners']}</b>",

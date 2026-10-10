@@ -37,13 +37,13 @@ async def pnl(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = tracker.format_pnl_summary(tracker.get_tracked(None))
         elif not rows:
             text = (
-                "📈 <b>MASFOX — PNL</b>\n"
+                "📈 <b>PNL</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"ℹ️ Babu token a cikin filter: <b>{PNLTracker._escape(lowered)}</b>"
             )
         else:
             text = (
-                "📈 <b>MASFOX — PNL FILTER</b>\n"
+                "📈 <b>PNL FILTER</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"🔎 Filter: <b>{PNLTracker._escape(lowered.upper())}</b>\n\n"
                 + "\n━━━━━━━━━━━━━━━━━━━━\n".join(
@@ -69,7 +69,7 @@ async def pnl(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not rows:
         await update.message.reply_text(
-            "📈 <b>MASFOX — PNL</b>\n"
+            "📈 <b>PNL</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "ℹ️ Babu token da aka fara tracking tukuna.\n"
             "Za a fara tracking ne bayan bot ya aika GEM signal.\n\n"
@@ -79,9 +79,9 @@ async def pnl(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     title = (
-        "📈 <b>MASFOX — TOKEN PNL</b>"
+        f"📈 <b>${PNLTracker._escape(rows[0].get('symbol', 'N/A'))} — PNL</b>"
         if argument
-        else "📈 <b>MASFOX — ALL PNL</b>"
+        else "📈 <b>ALL TOKEN PNL</b>"
     )
 
     parts = [title, "━━━━━━━━━━━━━━━━━━━━"]

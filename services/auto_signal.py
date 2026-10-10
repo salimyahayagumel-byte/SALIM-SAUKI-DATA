@@ -2192,10 +2192,9 @@ class AutoSignalEngine:
         # -----------------------------------------------------
 
         lines = [
-            "🔥 <b>MASFOX || GEM RADAR</b>",
+            f"{signal_icon} <b>${symbol} — {name}</b>",
             "━━━━━━━━━━━━━━━━━━━━━━━",
             "",
-            f"{signal_icon} <b>${symbol} — {name}</b>",
             (
                 f"⛓️ <b>{chain_name}</b> | "
                 "🧠 <b>SALIM AI ANALYSIS</b>"
@@ -2510,7 +2509,6 @@ class AutoSignalEngine:
             "",
             "━━━━━━━━━━━━━━━━━━━━━━━",
             "⚠️ <i>DYOR — Not Financial Advice</i>",
-            "🤖 <b>MASFOX AI</b>",
         ])
 
         message = "\n".join(lines)
@@ -2521,9 +2519,8 @@ class AutoSignalEngine:
 
         if len(message) > 1000:
             essential = [
-                "🔥 <b>MASFOX || GEM RADAR</b>",
-                "━━━━━━━━━━━━━━━━━━━━━━━",
                 f"{signal_icon} <b>${symbol} — {name}</b>",
+                "━━━━━━━━━━━━━━━━━━━━━━━",
                 f"⛓️ <b>{chain_name}</b> | {signal_label}",
                 "",
                 f"💰 MC: <b>${marketcap:,.0f}</b>",

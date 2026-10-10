@@ -1,7 +1,9 @@
 const state = {
     signals: [],
     chain: "all",
-    search: ""
+    search: "",
+    seenSignalKeys: new Set(),
+    initialSignalLoad: true
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -16,11 +18,13 @@ async function loadSignals() {
         const payload = await response.json();
         if (!dashboardCycleReady) await ensureDashboardCycle();
         const receivedSignals = Array.isArray(payload.signals) ? payload.signals : [];
-        state.signals = receivedSignals.filter(token => {
+        const nextSignals = receivedSignals.filter(token => {
             const raw = Number(token.sent_at || 0);
             const sentAtMs = raw > 0 ? (raw < 100000000000 ? raw * 1000 : raw) : 0;
             return sentAtMs >= dashboardCycleStart;
         });
+        notifyNewSignals(nextSignals);
+        state.signals = nextSignals;
         state.signals.forEach(addCalledSignal);
         render();
         renderCalledSignalsHistory();
@@ -113,14 +117,14 @@ function tokenCard(token) {
     const buy = Number(token.buy_ratio || 0) * 100;
     const sell = Math.max(0, 100 - buy);
     const address = String(token.address || "");
-    return `<article class="signal-card ${chainClass(chain)}" data-address="${escapeHtml(address)}">
+    return `<article class="signal-card ${chainClass(chain)}" data-address="${escapeHtml(address)}" data-chain="${escapeHtml(chain)}" tabindex="0" role="button" aria-label="Open full information for ${symbol}">
         <div class="card-top"><div class="token-title"><div class="logo-wrap">${image}</div><div><div class="symbol">$${symbol}</div><div class="name">${name}</div></div></div><span class="signal-badge ${signalClass(signal)}">${signal}</span></div>
         <div class="chain-row"><span>⛓️ ${escapeHtml(chainLabel(chain))}</span><span>${sentAt? escapeHtml(sentAt.toLocaleString()) : ""}</span></div>
         <div class="market-grid"><div><span>MC</span><strong>${money(token.marketcap)}</strong></div><div><span>LIQ</span><strong>${money(token.liquidity)}</strong></div><div><span>VOL 24H</span><strong>${money(token.volume24h)}</strong></div><div><span>TXNS</span><strong>${number(token.total_txns || token.txns1h)}</strong></div></div>
         <div class="flow-row"><span>🟢 BUY ${buy.toFixed(1)}%</span><span>🔴 SELL ${sell.toFixed(1)}%</span><span>🕒 ${escapeHtml(age)}</span></div>
         <div class="scores-card">${scoreBar("🤖 AI", token.ai_score)}${scoreBar("💎 GEM", token.gem_score)}${scoreBar("🛡️ SECURITY", token.security_score)}${scoreBar("🎯 FINAL", token.final_score)}</div>
         <div class="card-links"><a href="${escapeHtml(safeUrl(token.url))}" target="_blank" rel="noopener noreferrer">📊 Chart</a><a href="${escapeHtml(safeUrl(explorerUrl(token)))}" target="_blank" rel="noopener noreferrer">🔍 Explorer</a>${token.website_url? `<a href="${escapeHtml(safeUrl(token.website_url))}" target="_blank" rel="noopener noreferrer">🌐 Web</a>` : ""}${token.twitter_url? `<a href="${escapeHtml(safeUrl(token.twitter_url))}" target="_blank" rel="noopener noreferrer">𝕏 X</a>` : ""}${token.telegram_url? `<a href="${escapeHtml(safeUrl(token.telegram_url))}" target="_blank" rel="noopener noreferrer">✈️ TG</a>` : ""}</div>
-        <button class="detail-button" type="button" onclick="openDetail('${escapeHtml(address)}')">VIEW TOKEN →</button>
+        <button class="detail-button" type="button" onclick="openDetail('${escapeHtml(address)}', '${escapeHtml(chain)}'); event.stopPropagation();">VIEW TOKEN →</button>
     </article>`;
 }
 function formatAge(seconds) {
@@ -130,21 +134,112 @@ function formatAge(seconds) {
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
     return `${Math.floor(seconds / 86400)}d`;
 }
-function openDetail(address) {
-    const token = state.signals.find(t => String(t.address || "") === address);
+function detailValue(label, value) {
+    if (value === undefined || value === null || value === "") value = "—";
+    if (typeof value === "object") value = JSON.stringify(value);
+    return `<div class="detail-field"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`;
+}
+function openDetail(address, chainHint = "") {
+    const token = state.signals.find(t => String(t.address || "") === address && (!chainHint || String(t.chain || "").toLowerCase() === chainHint))
+        || state.signals.find(t => String(t.address || "") === address);
     if (!token) return;
     const chain = String(token.chain || "").toLowerCase();
-    const securityMin = chain === "solana"? 90 : 69;
-    const website = token.website_url? `<a href="${escapeHtml(safeUrl(token.website_url))}" target="_blank" rel="noopener noreferrer">Website</a>` : "";
-    const x = token.twitter_url? `<a href="${escapeHtml(safeUrl(token.twitter_url))}" target="_blank" rel="noopener noreferrer">X</a>` : "";
-    const tg = token.telegram_url? `<a href="${escapeHtml(safeUrl(token.telegram_url))}" target="_blank" rel="noopener noreferrer">Telegram</a>` : "";
-    $("#modalContent").innerHTML = `<div class="detail-head"><div class="eyebrow">${escapeHtml(chainLabel(chain))} · SIGNAL DETAIL</div><h2>$${escapeHtml(token.symbol || "N/A")} <span>${escapeHtml(token.name || "")}</span></h2><div class="detail-address">${escapeHtml(token.address || "")}</div></div><div class="detail-stats"><div><span>Market Cap</span><strong>${money(token.marketcap)}</strong></div><div><span>Liquidity</span><strong>${money(token.liquidity)}</strong></div><div><span>Volume 24H</span><strong>${money(token.volume24h)}</strong></div><div><span>Transactions</span><strong>${number(token.total_txns || token.txns1h)}</strong></div></div><div class="detail-section"><h3>🧠 SALIM AI ANALYSIS</h3>${scoreBar("AI", token.ai_score)}${scoreBar("GEM", token.gem_score)}${scoreBar("Security", token.security_score)}${scoreBar("Final", token.final_score)}</div><div class="detail-section"><h3>🔐 SECURITY</h3><p>Required security threshold: <b>${securityMin}/100</b></p><p>Current security score: <b>${score(token.security_score)}/100</b></p><p>Security gate: <b>${score(token.security_score) >= securityMin? "PASS" : "REVIEW"}</b></p></div><div class="detail-section"><h3>🔗 LINKS</h3><div class="detail-links"><a href="${escapeHtml(safeUrl(token.url))}" target="_blank" rel="noopener noreferrer">Chart</a><a href="${escapeHtml(safeUrl(explorerUrl(token)))}" target="_blank" rel="noopener noreferrer">Explorer</a>${website}${x}${tg}</div></div><div class="dyor">⚠️ DYOR — Not financial advice.</div>`;
+    const securityMin = chain === "solana" ? 90 : 69;
+    const website = token.website_url ? `<a href="${escapeHtml(safeUrl(token.website_url))}" target="_blank" rel="noopener noreferrer">Website</a>` : "";
+    const x = token.twitter_url ? `<a href="${escapeHtml(safeUrl(token.twitter_url))}" target="_blank" rel="noopener noreferrer">X / Twitter</a>` : "";
+    const tg = token.telegram_url ? `<a href="${escapeHtml(safeUrl(token.telegram_url))}" target="_blank" rel="noopener noreferrer">Telegram</a>` : "";
+    const discord = token.discord_url ? `<a href="${escapeHtml(safeUrl(token.discord_url))}" target="_blank" rel="noopener noreferrer">Discord</a>` : "";
+    const sentAt = Number(token.sent_at || 0);
+    const timestamp = sentAt ? new Date(sentAt < 100000000000 ? sentAt * 1000 : sentAt).toLocaleString() : "—";
+    const allFields = [
+        ["Token name", token.name], ["Symbol", token.symbol], ["Chain", chainLabel(chain)],
+        ["Contract address", token.address], ["Pair address", token.pair_address || token.pairAddress],
+        ["Price USD", token.price_usd || token.priceUsd], ["Market cap", money(token.marketcap)],
+        ["FDV", money(token.fdv)], ["Liquidity USD", money(token.liquidity)],
+        ["24H volume", money(token.volume24h)], ["24H price change %", token.price_change_24h ?? token.priceChange?.h24],
+        ["Transactions", number(token.total_txns || token.txns1h)], ["Buys", token.buys_24h ?? token.buys],
+        ["Sells", token.sells_24h ?? token.sells], ["Buy ratio %", `${(Number(token.buy_ratio || 0) * 100).toFixed(1)}%`],
+        ["Pair age", token.pair_age_seconds ? formatAge(Number(token.pair_age_seconds)) : "—"],
+        ["First signal time", timestamp], ["Final status", token.final_status], ["Final signal", token.final_signal],
+        ["AI score", `${score(token.ai_score)}/100`], ["GEM score", `${score(token.gem_score)}/100`],
+        ["Security score", `${score(token.security_score)}/100`], ["Final score", `${score(token.final_score)}/100`],
+        ["Recommendation score", token.recommendation_score], ["Security gate", token.security_should_pass === undefined ? "—" : (token.security_should_pass ? "PASS" : "REVIEW")],
+        ["Risk level", token.risk_level || token.risk], ["Holders", token.holders ?? token.holder_count],
+        ["Website", token.website_url], ["Twitter / X", token.twitter_url], ["Telegram", token.telegram_url],
+        ["Description", token.description || token.token_description]
+    ];
+    const fieldHtml = allFields.map(([label, value]) => detailValue(label, value)).join("");
+    const extras = Object.entries(token).filter(([key, value]) => ![
+        "name","symbol","chain","address","pair_address","pairAddress","price_usd","priceUsd","marketcap","fdv","liquidity","volume24h","price_change_24h","priceChange","total_txns","txns1h","buys_24h","buys","sells_24h","sells","buy_ratio","pair_age_seconds","sent_at","final_status","final_signal","ai_score","gem_score","security_score","final_score","recommendation_score","security_should_pass","risk_level","risk","holders","holder_count","website_url","twitter_url","telegram_url","description","token_description","url","explorer_url","image_url","info","signal_key"
+    ].includes(key) && value !== null && value !== "" && typeof value !== "function");
+    const extrasHtml = extras.length ? `<div class="detail-section"><h3>📚 ADDITIONAL TOKEN DATA</h3><div class="detail-fields">${extras.map(([key, value]) => detailValue(key.replaceAll("_", " "), value)).join("")}</div></div>` : "";
+    const logo = safeUrl(token.image_url || "");
+    const logoHtml = logo !== "#" ? `<img class="detail-token-logo" src="${escapeHtml(logo)}" alt="Token logo" onerror="this.style.display='none'">` : "";
+    $("#modalContent").innerHTML = `<div class="detail-head">${logoHtml}<div class="eyebrow">${escapeHtml(chainLabel(chain))} · FULL TOKEN INFORMATION</div><h2>$${escapeHtml(token.symbol || "N/A")} <span>${escapeHtml(token.name || "")}</span></h2><div class="detail-address">${escapeHtml(token.address || "")}</div><button class="copy-address-button" type="button" onclick="navigator.clipboard?.writeText(${JSON.stringify(String(token.address || ""))}).then(()=>showToast('Contract address copied')).catch(()=>showToast('Could not copy address'))">Copy contract address</button></div><div class="detail-section"><h3>📊 MARKET DATA</h3><div class="detail-fields">${fieldHtml}</div></div><div class="detail-section"><h3>🧠 MASFOX AI & SECURITY</h3>${scoreBar("AI", token.ai_score)}${scoreBar("GEM", token.gem_score)}${scoreBar("Security", token.security_score)}${scoreBar("Final", token.final_score)}<p>Security threshold reference: <b>${securityMin}/100</b>. This is informational and does not replace independent verification.</p></div><div class="detail-section"><h3>🔗 TOKEN LINKS</h3><div class="detail-links"><a href="${escapeHtml(safeUrl(token.url))}" target="_blank" rel="noopener noreferrer">Chart</a><a href="${escapeHtml(safeUrl(explorerUrl(token)))}" target="_blank" rel="noopener noreferrer">Explorer</a>${website}${x}${tg}${discord}</div></div>${extrasHtml}<div class="dyor">⚠️ DYOR — token data can be incomplete or delayed. Not financial advice.</div>`;
     $("#detailModal").classList.remove("hidden");
     $("#detailModal").setAttribute("aria-hidden", "false");
+}
+
+function showToast(message) {
+    const toast = $("#notificationToast");
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.remove("hidden");
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(() => toast.classList.add("hidden"), 5000);
+}
+function signalKey(token) { return `${String(token.chain || "").toLowerCase()}:${String(token.address || "").toLowerCase()}`; }
+function notifyNewSignals(signals) {
+    const keys = new Set(signals.map(signalKey));
+    if (state.initialSignalLoad) {
+        state.seenSignalKeys = keys;
+        state.initialSignalLoad = false;
+        return;
+    }
+    const fresh = signals.filter(token => !state.seenSignalKeys.has(signalKey(token)));
+    keys.forEach(key => state.seenSignalKeys.add(key));
+    if (state.seenSignalKeys.size > 1000) state.seenSignalKeys = new Set(Array.from(state.seenSignalKeys).slice(-500));
+    fresh.forEach(token => {
+        const title = `New MASFOX signal: $${token.symbol || "TOKEN"}`;
+        const body = `${chainLabel(token.chain)} · ${token.final_signal || token.final_status || "New token detected"} · Final score ${score(token.final_score)}/100`;
+        showToast(`🔔 ${title} — ${body}`);
+        if ("Notification" in window && Notification.permission === "granted") {
+            try {
+                const notification = new Notification(title, { body, icon: token.image_url || "/static/img/masfox-logo.jpg", tag: signalKey(token) });
+                notification.onclick = () => { window.focus(); openDetail(String(token.address || ""), String(token.chain || "").toLowerCase()); notification.close(); };
+            } catch (error) { console.warn("Browser notification unavailable:", error); }
+        }
+    });
+}
+async function enableNotifications() {
+    if (!("Notification" in window)) {
+        showToast("This browser does not support desktop notifications.");
+        return;
+    }
+    try {
+        const permission = await Notification.requestPermission();
+        if (permission === "granted") {
+            $("#notificationButton").classList.add("notifications-enabled");
+            showToast("🔔 MASFOX notifications enabled. Keep this dashboard open to receive new-signal alerts.");
+        } else {
+            showToast("Notifications are blocked. Allow them in your browser site settings.");
+        }
+    } catch (error) { showToast("Could not enable notifications in this browser."); }
 }
 function closeModal() { $("#detailModal").classList.add("hidden"); $("#detailModal").setAttribute("aria-hidden", "true"); }
 document.querySelectorAll("[data-close-modal]").forEach(el => el.addEventListener("click", closeModal));
 $("#refreshButton").addEventListener("click", loadSignals);
+$("#notificationButton").addEventListener("click", enableNotifications);
+$("#signalGrid").addEventListener("click", event => {
+    if (event.target.closest("a, button")) return;
+    const card = event.target.closest(".signal-card");
+    if (card) openDetail(card.dataset.address || "", card.dataset.chain || "");
+});
+$("#signalGrid").addEventListener("keydown", event => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const card = event.target.closest(".signal-card");
+    if (card) { event.preventDefault(); openDetail(card.dataset.address || "", card.dataset.chain || ""); }
+});
 $("#searchInput").addEventListener("input", event => { state.search = event.target.value.trim(); render(); });
 document.querySelectorAll(".filter").forEach(button => {
     button.addEventListener("click", () => {

@@ -20,7 +20,8 @@
     </a>
     <div class="top-actions">
         <span class="live-pill"><i></i> LIVE</span>
-        <button id="refreshButton" class="icon-button" type="button">↻</button>
+        <button id="notificationButton" class="icon-button notification-button" type="button" title="Enable new-token notifications" aria-label="Enable notifications">🔔</button>
+        <button id="refreshButton" class="icon-button" type="button" title="Refresh signals" aria-label="Refresh signals">↻</button>
     </div>
 </header>
 
@@ -144,6 +145,7 @@
 
 </main>
 
+<div id="notificationToast" class="notification-toast hidden" role="status" aria-live="polite"></div>
 <div id="detailModal" class="modal hidden" aria-hidden="true">
     <div class="modal-backdrop" data-close-modal></div>
     <article class="modal-card">

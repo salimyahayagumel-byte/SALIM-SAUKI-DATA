@@ -68,5 +68,35 @@ class TestPNLNotificationFormat(unittest.TestCase):
         self.assertEqual(bot.messages[-1]["text"].count("💸"), 21)
 
 
+    def test_drawdown_does_not_send_telegram_alert(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
+        bot = CaptureBot()
+        tracker = PNLTracker(bot=bot, chat_id="-100", database_url=path)
+        tracker.add_signal({
+            "chain": "solana",
+            "address": "TokenDrawdown",
+            "symbol": "DRAWDOWN",
+            "price": 0.01,
+            "pair": "PairDrawdown",
+            "marketcap": 10000,
+        })
+        row = tracker.get_tracked("solana:TokenDrawdown")[0]
+
+        # First rise sends milestone updates as normal.
+        asyncio.run(tracker._process_market_cap(row, 30000, 0.03))
+        messages_after_rise = len(bot.messages)
+        self.assertGreater(messages_after_rise, 0)
+
+        # A large fall from the recorded peak must not send a drawdown alert.
+        asyncio.run(tracker._process_market_cap(row, 20000, 0.02))
+        self.assertEqual(len(bot.messages), messages_after_rise)
+        self.assertNotIn(
+            "DRAWDOWN ALERT",
+            "\\n".join(message["text"] for message in bot.messages),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

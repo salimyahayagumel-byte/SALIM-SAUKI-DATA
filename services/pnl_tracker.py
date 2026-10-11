@@ -575,18 +575,8 @@ class PNLTracker:
             and new_peak_since_alert
         )
 
-        if should_alert_drawdown:
-            self._mark_drawdown_alert(row["signal_key"], highest_pnl)
-            await self._send_update(
-                row=row,
-                current_market_cap=market_cap,
-                current_price=current_price,
-                pnl=pnl,
-                milestone=stored_milestone,
-                highest_pnl=highest_pnl,
-                drawdown=drawdown,
-                alert_type="drawdown",
-            )
+        # Drawdown alert notifications are intentionally disabled.
+        # PNL milestone notifications and PNL tracking remain enabled.
 
     async def _process_price(self, row: Dict[str, Any], price: float):
         """Legacy compatibility wrapper; MC remains the primary PNL metric."""

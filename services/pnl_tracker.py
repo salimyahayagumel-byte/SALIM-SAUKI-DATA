@@ -651,7 +651,10 @@ class PNLTracker:
 
         entry_mc = self._number(row.get("entry_market_cap"))
         if pnl >= 0:
-            money_emojis = "💸" * min(12, max(1, int(pnl // 100) + 1))
+            # One 💸 per 0.5X of total market-cap multiple: 1X=2, 10.5X=21.
+            # Keep the count tied to X, not to the PNL percentage buckets.
+            money_emoji_count = max(2, int(multiplier * 2 + 1e-9))
+            money_emojis = "💸" * money_emoji_count
             profit_headline = (
                 f"📈 <b>${self._escape(symbol)} is up {multiplier:.2f}X "
                 "from Entry Signal</b>"

@@ -805,6 +805,27 @@ class AutoSignalEngine:
                 )
 
             # -------------------------------------------------
+            # AUTO SIGNAL PROFILE IMAGE REQUIREMENT
+            # -------------------------------------------------
+            # Do not publish automatic signals for tokens without
+            # a usable profile image URL. This gate applies only to
+            # AUTO SIGNALS; PNL notifications use their own flow.
+            image_url = str(
+                token.get(
+                    "image_url",
+                    "",
+                )
+                or ""
+            ).strip()
+
+            if not image_url.startswith(("http://", "https://")):
+                print(
+                    f"⏭️ Skipping AUTO SIGNAL for ${symbol}: "
+                    "token has no profile image"
+                )
+                continue
+
+            # -------------------------------------------------
             # FORMAT
             # -------------------------------------------------
 

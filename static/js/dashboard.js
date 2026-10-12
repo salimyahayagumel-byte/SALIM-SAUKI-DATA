@@ -353,6 +353,48 @@ async function searchByCa(){
     try{ const result=await fetchDexToken(value); renderCaResult(result); status.className=result?"tool-status success":"tool-status error"; status.textContent=result?"Token found and currently visible on DEX.":"❌ Token Not Found / Not Created on DEX"; }catch(e){ status.className="tool-status error"; status.textContent=`❌ Lookup failed: ${e.message}`; renderCaResult(null); }finally{ button.disabled=false; }
 }
 
+// ================= ADMIN-ONLY MANUAL TELEGRAM SIGNALS =================
+let manualTokenPreview = null;
+let manualRequestInFlight = false;
+function manualHeaders(){ return {"Content-Type":"application/json", "Accept":"application/json", "X-Manual-Signal-Key":String($("#manualAdminKey")?.value||"").trim()}; }
+function manualStatus(message, kind=""){ const el=$("#manualSignalStatus"); if(el){el.className=`tool-status ${kind}`;el.textContent=message;} }
+function renderManualPreview(token){
+    manualTokenPreview=token||null; const target=$("#manualTokenPreview"); const send=$("#manualSendButton");
+    if(!target) return;
+    if(!token){target.className="ca-result empty-tool-state";target.innerHTML=`<span>🔐</span><p>Authenticate and lookup a token to preview market data.</p>`;if(send)send.disabled=true;return;}
+    target.className="ca-result";
+    target.innerHTML=`<div class="manual-preview"><h4>$${escapeHtml(token.symbol)} — ${escapeHtml(token.name)}</h4><div class="tool-status success">Live DexScreener data · ${escapeHtml(token.chain)} · ${escapeHtml(token.dex)}</div><div class="manual-preview-grid"><div><span>PRICE USD</span><strong>${escapeHtml(formatTokenPrice(token.price_usd))}</strong></div><div><span>MC / FDV</span><strong>${money(token.marketcap)}</strong></div><div><span>LIQUIDITY</span><strong>${money(token.liquidity)}</strong></div><div><span>VOLUME 24H</span><strong>${money(token.volume24h)}</strong></div><div><span>BUYS / SELLS</span><strong>${number(token.buys24h)} / ${number(token.sells24h)}</strong></div><div><span>SIGNAL TYPE</span><strong>${escapeHtml($("#manualSignalType")?.value||"MANUAL GEM")}</strong></div></div><div class="manual-ca">CA: ${escapeHtml(token.address)}</div><p class="manual-warning">⚠️ Manual call only — not auto-approved and not a safety/profit guarantee.</p>${token.url?`<div class="ca-links"><a href="${escapeHtml(safeUrl(token.url))}" target="_blank" rel="noopener noreferrer">📊 Open chart</a></div>`:""}</div>`;
+    updateManualSendEnabled();
+}
+function updateManualSendEnabled(){const b=$("#manualSendButton"); if(b)b.disabled=!(manualTokenPreview && $("#manualAdminKey")?.value.trim() && $("#manualReason")?.value.trim() && $("#manualRiskConfirm")?.checked && !manualRequestInFlight);}
+async function manualLookup(){
+    if(manualRequestInFlight)return; const key=String($("#manualAdminKey")?.value||"").trim(); const address=String($("#manualAddress")?.value||"").trim(); const chain=String($("#manualChain")?.value||"");
+    if(!key){manualStatus("Enter the admin key configured in Render.","error");return;} if(!address){manualStatus("Paste the token contract address.","error");return;}
+    manualRequestInFlight=true; updateManualSendEnabled(); const button=$("#manualLookupButton"); if(button)button.disabled=true; renderManualPreview(null); manualStatus("Checking admin access and fetching live token data…","loading");
+    try{const r=await fetch("/api/manual-signal/lookup",{method:"POST",headers:manualHeaders(),body:JSON.stringify({address,chain}),cache:"no-store"});const data=await r.json();if(!r.ok||!data.success)throw new Error(data.error||`HTTP ${r.status}`);renderManualPreview(data.token);manualStatus(data.warning||"Token loaded. Review it before sending.","success");}
+    catch(e){renderManualPreview(null);manualStatus(e.message||"Lookup failed.","error");}
+    finally{manualRequestInFlight=false;if(button)button.disabled=false;updateManualSendEnabled();}
+}
+async function manualSend(){
+    if(!manualTokenPreview||manualRequestInFlight)return;
+    const reason=String($("#manualReason")?.value||"").trim(); if(!reason){manualStatus("Write a short reason for this signal.","error");return;} if(!$("#manualRiskConfirm")?.checked){manualStatus("Confirm the manual-signal risk warning first.","error");return;}
+    if(!confirm(`Send $${manualTokenPreview.symbol} as a MANUAL SIGNAL to the configured Telegram group?`))return;
+    manualRequestInFlight=true;updateManualSendEnabled();manualStatus("Refreshing token data and sending to Telegram…","loading");
+    try{const r=await fetch("/api/manual-signal/send",{method:"POST",headers:manualHeaders(),body:JSON.stringify({address:manualTokenPreview.address,chain:String($("#manualChain")?.value||""),signal_type:String($("#manualSignalType")?.value||"MANUAL GEM"),reason}),cache:"no-store"});const data=await r.json();if(!r.ok||!data.success)throw new Error(data.error||`HTTP ${r.status}`);manualStatus(`✅ ${data.message} (${data.symbol||manualTokenPreview.symbol})`,"success");showToast("Manual signal sent to Telegram group.");$("#manualRiskConfirm").checked=false;}
+    catch(e){manualStatus(e.message||"Telegram send failed.","error");}
+    finally{manualRequestInFlight=false;updateManualSendEnabled();}
+}
+function initManualSignals(){
+    const key=$("#manualAdminKey"); if(!key)return;
+    // Do not persist the admin key to localStorage/sessionStorage.
+    $("#manualLookupButton")?.addEventListener("click",manualLookup); $("#manualSendButton")?.addEventListener("click",manualSend);
+    ["#manualAdminKey","#manualReason"].forEach(sel=>$(sel)?.addEventListener("input",updateManualSendEnabled));
+    $("#manualRiskConfirm")?.addEventListener("change",updateManualSendEnabled);
+    $("#manualSignalType")?.addEventListener("change",()=>{if(manualTokenPreview)renderManualPreview(manualTokenPreview);});
+    fetch("/api/manual-signal/status",{cache:"no-store"}).then(r=>r.json()).then(d=>{if(!d.enabled){manualStatus("Manual signals are disabled. Set DASHBOARD_MANUAL_SIGNAL_KEY in Render and ensure Telegram group configuration exists.","error");const b=$("#manualFeatureBadge");if(b){b.textContent="DISABLED";b.classList.add("manual-status-disabled");}}}).catch(()=>{});
+}
+initManualSignals();
+
 // ================= FIXED PNL - NO JUMPING + HANDLE RUGS =================
 function renderPnlTracker(){
     const target=$("#pnlList"); if(!target) return; const history=readCalledSignals();

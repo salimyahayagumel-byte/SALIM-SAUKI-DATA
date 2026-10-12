@@ -49,6 +49,7 @@
     <section class="top-tabs" aria-label="Main views">
         <button class="tab-button active" data-view="signals">📡 SIGNALS</button>
         <button class="tab-button" data-view="search">🔎 SEARCH TOKEN</button>
+        <button class="tab-button" data-view="manual">🖐️ MANUAL SIGNALS</button>
         <button class="tab-button" data-view="pnl">📈 PNL</button>
         <button class="tab-button" data-view="history">📜 HISTORY</button>
     </section>
@@ -105,6 +106,27 @@
                 <span>🧭</span>
                 <p>Token lookup results will appear here.</p>
             </div>
+        </article>
+    </div>
+
+
+    <!-- VIEW: ADMIN-ONLY MANUAL SIGNALS -->
+    <div id="view-manual" class="view-panel">
+        <article class="tool-panel tool-panel-wide" id="manualSignalPanel">
+            <div class="tool-heading"><div><div class="eyebrow">RESTRICTED ADMIN ACTION</div><h3>🖐️ Manual Telegram Signal</h3></div><span id="manualFeatureBadge" class="tool-live">ADMIN ONLY</span></div>
+            <p class="manual-warning">Manual signals bypass Auto Signal eligibility gates. This does not mean a token is safe. Review the risks and DYOR before sending.</p>
+            <div class="manual-form-grid">
+                <label>Admin key <input id="manualAdminKey" type="password" autocomplete="off" placeholder="Enter Render DASHBOARD_MANUAL_SIGNAL_KEY"></label>
+                <label>Chain <select id="manualChain"><option value="solana">Solana</option><option value="base">Base</option><option value="robinhood">Robinhood</option><option value="arc">Arc</option></select></label>
+                <label class="manual-address-field">Contract Address <input id="manualAddress" type="text" autocomplete="off" spellcheck="false" placeholder="Paste token contract address"></label>
+                <button id="manualLookupButton" class="orange-button" type="button">Lookup Token</button>
+                <label>Signal type <select id="manualSignalType"><option>MANUAL GEM</option><option>MANUAL BUY</option><option>WATCHLIST</option><option>HIGH RISK — DYOR</option></select></label>
+                <label class="manual-reason-field">Admin note / reason <textarea id="manualReason" rows="3" maxlength="500" placeholder="Why are you calling this token? (required)"></textarea></label>
+            </div>
+            <div id="manualSignalStatus" class="tool-status">Manual signal feature requires DASHBOARD_MANUAL_SIGNAL_KEY in Render. Key is kept only in this page's memory and is not saved.</div>
+            <div id="manualTokenPreview" class="ca-result empty-tool-state"><span>🔐</span><p>Authenticate and lookup a token to preview market data.</p></div>
+            <label class="manual-confirm"><input id="manualRiskConfirm" type="checkbox"> I understand this is a manual signal, it may fail Auto Signal checks, and it is not a safety or profit guarantee.</label>
+            <button id="manualSendButton" class="orange-button manual-send-button" type="button" disabled>Send Manual Signal to Telegram Group</button>
         </article>
     </div>
 

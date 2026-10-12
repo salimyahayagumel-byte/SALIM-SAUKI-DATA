@@ -1,12 +1,16 @@
 import asyncio
+import html
+import hmac
 import logging
 import os
+import re
 import threading
 import sqlite3
 import time
 import uuid
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
+from telegram import Bot
 
 from telegram.ext import (
     Application,
@@ -53,6 +57,7 @@ from services.group_cleanup import (
 )
 
 from web.dashboard import load_dashboard, perform_scan
+from services.dexscreener import DexScreener
 
 # =========================================
 # CLOUD WEB SERVER / HEALTH ENDPOINTS
@@ -297,6 +302,185 @@ def dashboard_scan():
     error = result.get("error", "Scan failed.")
     status = 409 if error == "A scan is already running." else 500
     return jsonify(result), status
+
+
+# =========================================================
+# ADMIN-ONLY MANUAL TELEGRAM SIGNALS
+# =========================================================
+MANUAL_SIGNAL_KEY_ENV = "DASHBOARD_MANUAL_SIGNAL_KEY"
+MANUAL_SIGNAL_CHAT_ID = AUTO_SIGNAL_CHAT_ID
+_MANUAL_SEND_LOCK = threading.Lock()
+_MANUAL_LAST_SENT_AT = 0.0
+_MANUAL_SEND_COOLDOWN = max(3, int(os.getenv("DASHBOARD_MANUAL_SIGNAL_COOLDOWN", "10")))
+_MANUAL_ALLOWED_CHAINS = {"solana", "base", "robinhood", "arc"}
+_MANUAL_SIGNAL_TYPES = {"MANUAL BUY", "MANUAL GEM", "WATCHLIST", "HIGH RISK — DYOR"}
+
+
+def _manual_admin_authorized():
+    configured = os.getenv(MANUAL_SIGNAL_KEY_ENV, "").strip()
+    supplied = request.headers.get("X-Manual-Signal-Key", "").strip()
+    # Fail closed: no key means the feature remains disabled.
+    return bool(configured and supplied and hmac.compare_digest(configured, supplied))
+
+
+def _manual_chain_matches(pair, requested_chain):
+    actual = str(pair.get("chainId") or "").strip().lower()
+    aliases = {"solana": {"solana"}, "base": {"base"},
+               "robinhood": {"robinhood", "robinhood-chain"}, "arc": {"arc"}}
+    return actual in aliases.get(requested_chain, {requested_chain})
+
+
+def _manual_pair_contains_address(pair, address):
+    target = str(address or "").lower()
+    base = str((pair.get("baseToken") or {}).get("address") or "").lower()
+    quote = str((pair.get("quoteToken") or {}).get("address") or "").lower()
+    return bool(target and target in {base, quote})
+
+
+def _manual_token_snapshot(pair, address):
+    base = pair.get("baseToken") or {}
+    quote = pair.get("quoteToken") or {}
+    address_lower = address.lower()
+    token = base if str(base.get("address") or "").lower() == address_lower else quote
+    liquidity = pair.get("liquidity") or {}
+    volume = pair.get("volume") or {}
+    txns = pair.get("txns") or {}
+    h24 = txns.get("h24") or {}
+    return {
+        "name": str(token.get("name") or "Unknown token")[:100],
+        "symbol": str(token.get("symbol") or "N/A")[:30],
+        "address": str(token.get("address") or address)[:120],
+        "chain": str(pair.get("chainId") or "unknown").lower(),
+        "price_usd": str(pair.get("priceUsd") or "0")[:40],
+        "marketcap": pair.get("marketCap") or pair.get("fdv") or 0,
+        "liquidity": liquidity.get("usd") or 0,
+        "volume24h": volume.get("h24") or 0,
+        "buys24h": h24.get("buys") or 0,
+        "sells24h": h24.get("sells") or 0,
+        "pair_address": str(pair.get("pairAddress") or "")[:120],
+        "url": str(pair.get("url") or "")[:500],
+        "dex": str(pair.get("dexId") or "DEX")[:60],
+        "image_url": str(((pair.get("info") or {}).get("imageUrl")) or "")[:500],
+    }
+
+
+@app_web.route("/api/manual-signal/status", methods=["GET"])
+def manual_signal_status():
+    enabled = bool(os.getenv(MANUAL_SIGNAL_KEY_ENV, "").strip() and BOT_TOKEN and MANUAL_SIGNAL_CHAT_ID)
+    return jsonify({"success": True, "enabled": enabled, "admin_only": True,
+                    "chat_configured": bool(MANUAL_SIGNAL_CHAT_ID)}), 200
+
+
+@app_web.route("/api/manual-signal/lookup", methods=["POST"])
+def manual_signal_lookup():
+    if not _manual_admin_authorized():
+        return jsonify({"success": False, "error": "Admin authorization failed or manual signals are disabled."}), 403
+    payload = request.get_json(silent=True) or {}
+    address = str(payload.get("address") or "").strip()
+    chain = str(payload.get("chain") or "").strip().lower()
+    if not (20 <= len(address) <= 120) or not re.fullmatch(r"[A-Za-z0-9]+", address):
+        return jsonify({"success": False, "error": "Enter a valid contract address."}), 400
+    if chain not in _MANUAL_ALLOWED_CHAINS:
+        return jsonify({"success": False, "error": "Unsupported chain selection."}), 400
+
+    async def lookup_pairs():
+        dex = DexScreener()
+        try:
+            return await dex.tokens([address], retries=1)
+        finally:
+            await dex.close()
+    try:
+        pairs = asyncio.run(lookup_pairs())
+    except Exception as exc:
+        logger.warning("Manual signal token lookup failed: %s", exc)
+        return jsonify({"success": False, "error": "Token lookup failed. Please retry."}), 502
+    matching = [p for p in pairs if _manual_chain_matches(p, chain) and _manual_pair_contains_address(p, address)]
+    if not matching:
+        return jsonify({"success": False, "error": "Token not found on DexScreener for the selected chain. Confirm the address and chain."}), 404
+    matching.sort(key=lambda p: float(((p.get("liquidity") or {}).get("usd") or 0)), reverse=True)
+    token = _manual_token_snapshot(matching[0], address)
+    return jsonify({"success": True, "token": token,
+                    "warning": "Manual signal bypasses Auto Signal eligibility gates. Data may be incomplete; verify token risks independently."}), 200
+
+
+@app_web.route("/api/manual-signal/send", methods=["POST"])
+def manual_signal_send():
+    global _MANUAL_LAST_SENT_AT
+    if not _manual_admin_authorized():
+        return jsonify({"success": False, "error": "Admin authorization failed or manual signals are disabled."}), 403
+    if not BOT_TOKEN or not MANUAL_SIGNAL_CHAT_ID:
+        return jsonify({"success": False, "error": "Telegram bot token or AUTO_SIGNAL_CHAT_ID is not configured."}), 503
+    payload = request.get_json(silent=True) or {}
+    address = str(payload.get("address") or "").strip()
+    chain = str(payload.get("chain") or "").strip().lower()
+    signal_type = str(payload.get("signal_type") or "MANUAL GEM").strip().upper()
+    reason = str(payload.get("reason") or "").strip()
+    if not (20 <= len(address) <= 120) or not re.fullmatch(r"[A-Za-z0-9]+", address):
+        return jsonify({"success": False, "error": "Enter a valid contract address."}), 400
+    if chain not in _MANUAL_ALLOWED_CHAINS or signal_type not in _MANUAL_SIGNAL_TYPES:
+        return jsonify({"success": False, "error": "Invalid chain or signal type."}), 400
+    if not reason or len(reason) > 500:
+        return jsonify({"success": False, "error": "Reason must be between 1 and 500 characters."}), 400
+
+    # Always fetch market data again at send-time; never trust browser-supplied prices.
+    async def lookup_pairs():
+        dex = DexScreener()
+        try:
+            return await dex.tokens([address], retries=1)
+        finally:
+            await dex.close()
+    try:
+        pairs = asyncio.run(lookup_pairs())
+    except Exception as exc:
+        logger.warning("Manual signal pre-send lookup failed: %s", exc)
+        return jsonify({"success": False, "error": "Could not refresh token data. Signal was not sent."}), 502
+    matching = [p for p in pairs if _manual_chain_matches(p, chain) and _manual_pair_contains_address(p, address)]
+    if not matching:
+        return jsonify({"success": False, "error": "Token no longer appears on DexScreener for the selected chain. Signal was not sent."}), 404
+    matching.sort(key=lambda p: float(((p.get("liquidity") or {}).get("usd") or 0)), reverse=True)
+    token = _manual_token_snapshot(matching[0], address)
+    with _MANUAL_SEND_LOCK:
+        now = time.monotonic()
+        if now - _MANUAL_LAST_SENT_AT < _MANUAL_SEND_COOLDOWN:
+            wait = max(1, int(_MANUAL_SEND_COOLDOWN - (now - _MANUAL_LAST_SENT_AT)))
+            return jsonify({"success": False, "error": f"Please wait {wait}s before sending another manual signal."}), 429
+        _MANUAL_LAST_SENT_AT = now
+
+    esc = lambda value: html.escape(str(value if value is not None else "—"), quote=True)
+    explorer = (f"https://solscan.io/token/{token['address']}" if chain == "solana" else
+                f"https://basescan.org/token/{token['address']}" if chain == "base" else token["url"])
+    message = (
+        f"🖐️ <b>SALIM SAUKI DATA — {esc(signal_type)}</b>\n"
+        f"⚠️ <b>MANUAL SIGNAL · NOT AUTO-APPROVED</b>\n\n"
+        f"🪙 <b>${esc(token['symbol'])}</b> — {esc(token['name'])}\n"
+        f"⛓️ Chain: <b>{esc(token['chain'].title())}</b>\n"
+        f"💵 Price: <b>${esc(token['price_usd'])}</b>\n"
+        f"🏦 Market Cap / FDV: <b>${esc(token['marketcap'])}</b>\n"
+        f"💧 Liquidity: <b>${esc(token['liquidity'])}</b>\n"
+        f"📊 Volume 24H: <b>${esc(token['volume24h'])}</b>\n"
+        f"🛒 Buys / Sells 24H: <b>{esc(token['buys24h'])} / {esc(token['sells24h'])}</b>\n"
+        f"📝 Admin note: {esc(reason)}\n\n"
+        f"📍 CA: <code>{esc(token['address'])}</code>\n"
+        f"📈 <a href=\"{esc(token['url'])}\">Chart</a> · "
+        f"🔍 <a href=\"{esc(explorer)}\">Explorer</a>\n\n"
+        "🛡️ <b>Risk warning:</b> This manual signal bypasses Auto Signal eligibility gates. Security is not guaranteed. DYOR; not financial advice."
+    )
+    try:
+        async def send_message():
+            async with Bot(token=BOT_TOKEN) as telegram_bot:
+                return await telegram_bot.send_message(
+                    chat_id=MANUAL_SIGNAL_CHAT_ID, text=message,
+                    parse_mode="HTML", disable_web_page_preview=True,
+                )
+        sent = asyncio.run(send_message())
+        logger.info("Manual signal sent by dashboard admin: chain=%s address=%s message_id=%s", chain, address, getattr(sent, "message_id", "unknown"))
+        return jsonify({"success": True, "message": "Manual signal sent to the configured Telegram group.",
+                        "message_id": getattr(sent, "message_id", None), "symbol": token["symbol"]}), 200
+    except Exception as exc:
+        logger.exception("Manual Telegram signal send failed")
+        with _MANUAL_SEND_LOCK:
+            _MANUAL_LAST_SENT_AT = 0.0
+        return jsonify({"success": False, "error": "Telegram delivery failed. Check bot permissions and AUTO_SIGNAL_CHAT_ID."}), 502
 
 
 @app_web.route("/static/<path:filename>")

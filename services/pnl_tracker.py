@@ -614,95 +614,45 @@ class PNLTracker:
             pnl / 100.0
         )
 
-        title = (
-            f"📉 <b>${self._escape(symbol)} — DRAWDOWN ALERT</b>"
-            if alert_type == "drawdown"
-            else f"📈 <b>${self._escape(symbol)} — PNL UPDATE</b>"
-        )
-
-        milestone_line = (
-            f"┗ Milestone: <b>+{milestone:.0f}%</b>"
-            if milestone > 0
-            else "┗ Milestone: <b>None yet</b>"
-        )
-
-        pair_line = ""
-        pair_address = str(
-            row.get("pair_address", "")
-            or ""
-        ).strip()
-
-        if pair_address:
-            pair_line = (
-                f"🔗 Pair: <code>"
-                f"{self._escape(pair_address)}"
-                f"</code>"
-            )
-
         entry_mc = self._number(row.get("entry_market_cap"))
         if pnl >= 0:
-            # One 💸 per 0.5X of total market-cap multiple: 1X=2, 10.5X=21.
-            # Keep the count tied to X, not to the PNL percentage buckets.
+            # Preserve the existing rule: two 💸 per 1X of total multiple.
+            # Split into rows of at most 10 emojis for a clean Telegram layout.
             money_emoji_count = max(2, int(multiplier * 2 + 1e-9))
-            money_emojis = "💸" * money_emoji_count
+            emoji_lines = [
+                " ".join(["💸"] * min(10, money_emoji_count - offset))
+                for offset in range(0, money_emoji_count, 10)
+            ]
             profit_headline = (
-                f"📈 <b>${self._escape(symbol)} is up {multiplier:.2f}X "
-                "from Entry Signal</b>"
+                f"📈 <b>${self._escape(symbol)} is up {multiplier:.2f}X</b>"
             )
             profit_amount = (
-                f"💰 <b>{self._format_money(entry_mc)} → "
-                f"{self._format_money(current_market_cap)}</b> {money_emojis}"
-            )
-        else:
-            profit_headline = (
-                f"📉 <b>${self._escape(symbol)} is down {abs(pnl):.1f}% "
-                "from Entry Signal</b>"
-            )
-            profit_amount = (
-                f"💰 <b>{self._format_money(entry_mc)} → "
+                f"<b>{self._format_money(entry_mc)} → "
                 f"{self._format_money(current_market_cap)}</b>"
             )
-
-        message = "\n".join(
-            [
-                title,
-                "━━━━━━━━━━━━━━━━━━━━",
+            message_lines = [
                 profit_headline,
-                profit_amount,
-                f"📊 <b>PNL: {pnl:+.1f}%</b> | Multiple: <b>{multiplier:.2f}X</b>",
-                "━━━━━━━━━━━━━━━━━━━━",
-                chain_label,
+                "from ⚡ <b>Entry Signal</b>",
                 "",
-                "💰 <b>MARKET CAP</b>",
-                f"┗ Entry MC: <b>{self._format_money(entry_mc)}</b>",
-                f"┗ Current MC: <b>{self._format_money(current_market_cap)}</b>",
-                "",
-                "📊 <b>PNL DETAILS</b>",
-                f"┗ Current PNL: <b>{pnl:+.1f}%</b>",
-                milestone_line,
-                f"┗ Best PNL: <b>+{highest_pnl:.1f}%</b>",
-                f"┗ Best MC: <b>{self._format_money(row.get('highest_market_cap'))}</b>",
-                (
-                    f"┗ Drawdown: <b>-{drawdown:.1f}%</b>"
-                    if drawdown > 0
-                    else ""
-                ),
-                "",
-                f"📄 <code>{self._escape(row['address'])}</code>",
-                pair_line,
-                "",
-                f"💵 Price: <b>{self._format_price(current_price)}</b>",
-                "⚠️ <i>PNL is market-cap based; fees/slippage/taxes are not included.</i>",
+                f"{profit_amount}",
+                *emoji_lines,
             ]
-        )
+        else:
+            profit_headline = (
+                f"📉 <b>${self._escape(symbol)} is down {abs(pnl):.1f}%</b>"
+            )
+            profit_amount = (
+                f"<b>{self._format_money(entry_mc)} → "
+                f"{self._format_money(current_market_cap)}</b>"
+            )
+            message_lines = [
+                profit_headline,
+                "from ⚡ <b>Entry Signal</b>",
+                "",
+                profit_amount,
+            ]
 
-        # Remove intentionally empty lines caused by optional fields.
-        message = "\n".join(
-            line
-            for line in message.splitlines()
-            if line != ""
-            or True
-        )
+        message = "\n".join(message_lines)
 
         try:
             await self.bot.send_message(

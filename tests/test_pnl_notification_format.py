@@ -37,9 +37,11 @@ class TestPNLNotificationFormat(unittest.TestCase):
         asyncio.run(tracker._process_market_cap(row, 147000, 0.0544))
         self.assertEqual(len(bot.messages), 1)
         message = bot.messages[0]["text"]
-        self.assertIn("ALOIS is up 5.44X from Entry Signal", message)
-        self.assertIn("PNL: +444.4%", message)
-        self.assertIn("Best MC: <b>$147.0K</b>", message)
+        self.assertIn("ALOIS is up 5.44X", message)
+        self.assertIn("from ⚡", message)
+        self.assertIn("<b>$27.0K → $147.0K</b>", message)
+        self.assertNotIn("PNL DETAILS", message)
+        self.assertNotIn("DRAWDOWN ALERT", message)
         self.assertIn("\n", message)  # actual line breaks, not literal slash-n
         self.assertNotIn("\\n", message)
 
@@ -66,6 +68,11 @@ class TestPNLNotificationFormat(unittest.TestCase):
         # 10.5X means 21 emojis.
         asyncio.run(tracker._send_update(row, 105000, 0.105, 950, 900, 950))
         self.assertEqual(bot.messages[-1]["text"].count("💸"), 21)
+        emoji_lines = [
+            line for line in bot.messages[-1]["text"].splitlines()
+            if "💸" in line
+        ]
+        self.assertEqual([line.count("💸") for line in emoji_lines], [10, 10, 1])
 
 
     def test_drawdown_does_not_send_telegram_alert(self):

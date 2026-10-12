@@ -50,7 +50,7 @@ class TestPNLNotificationFormat(unittest.TestCase):
         asyncio.run(tracker._process_market_cap(row, 147000, 0.0544))
         self.assertEqual(len(bot.messages), 1)
         message = bot.messages[0]["text"]
-        self.assertIn("ALOIS is up 4X", message)
+        self.assertIn("ALOIS is up 444.44%", message)
         self.assertIn("from ⚡", message)
         self.assertIn("<b>$27.0K → $147.0K</b>", message)
         self.assertIn("📄 CA: <code>Token111</code>", message)

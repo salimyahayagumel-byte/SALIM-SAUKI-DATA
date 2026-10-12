@@ -617,16 +617,13 @@ class PNLTracker:
 
         entry_mc = self._number(row.get("entry_market_cap"))
         if pnl >= 0:
-            # The first alert is +50%; subsequent alerts are profit multiples:
-            # +100% = 1X profit, +200% = 2X profit, and so on.
-            if milestone > 0 and milestone < 100:
-                milestone_label = f"{milestone:.0f}%"
-            elif milestone >= 100:
-                milestone_label = f"{milestone / 100.0:.0f}X"
-            elif pnl < 100:
-                milestone_label = f"{pnl:.0f}%"
-            else:
-                milestone_label = f"{pnl / 100.0:.0f}X"
+            # The notification is triggered by a reached milestone, but the
+            # headline must show the ACTUAL current MC change from entry MC,
+            # not the threshold that triggered the notification.
+            # Always show the actual MC change as a percentage. The X-profit
+            # multiplier can be inferred from this percentage (e.g. +444.44%
+            # profit means the current MC is 5.4444x the entry MC).
+            milestone_label = f"{pnl:.2f}".rstrip("0").rstrip(".") + "%"
 
             # Emoji count is based on PROFIT multiple, not total position multiple:
             # +50% profit = 1 emoji, +100% (1X profit) = 2, +150% = 3, etc.

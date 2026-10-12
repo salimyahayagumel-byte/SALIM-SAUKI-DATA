@@ -35,7 +35,9 @@ from services.dexscreener import DexScreener
 class PNLTracker:
 
     DEFAULT_INTERVAL = 60
-    DEFAULT_MILESTONES = (10, 25, 50, 100, 200, 300, 400, 500, 900, 1000)
+    # PNL milestones: +50%, then +1x profit (+100%), +2x (+200%), etc.
+    # Standard milestones continue indefinitely beyond 10x.
+    DEFAULT_MILESTONES = (50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000)
     DEFAULT_MAX_TRACKED = 500
     DEFAULT_DRAWDOWN_ALERT = 20.0
 
@@ -54,6 +56,7 @@ class PNLTracker:
         self.chat_id = str(chat_id or "").strip()
         self.path = self._resolve_path(database_url)
         self.interval = max(15, int(interval or self.DEFAULT_INTERVAL))
+        self._use_standard_milestones = milestones is None
         self.milestones = sorted(
             set(
                 float(value)
@@ -610,21 +613,30 @@ class PNLTracker:
             "arc": "🟠 Arc",
         }.get(chain, f"⚪ {chain.title()}")
 
-        multiplier = 1 + (
-            pnl / 100.0
-        )
+        total_multiplier = 1 + (pnl / 100.0)
 
         entry_mc = self._number(row.get("entry_market_cap"))
         if pnl >= 0:
+            # The first alert is +50%; subsequent alerts are profit multiples:
+            # +100% = 1X profit, +200% = 2X profit, and so on.
+            if milestone > 0 and milestone < 100:
+                milestone_label = f"{milestone:.0f}%"
+            elif milestone >= 100:
+                milestone_label = f"{milestone / 100.0:.0f}X"
+            elif pnl < 100:
+                milestone_label = f"{pnl:.0f}%"
+            else:
+                milestone_label = f"{pnl / 100.0:.0f}X"
+
             # Preserve the existing rule: two 💸 per 1X of total multiple.
             # Split into rows of at most 10 emojis for a clean Telegram layout.
-            money_emoji_count = max(2, int(multiplier * 2 + 1e-9))
+            money_emoji_count = max(2, int(total_multiplier * 2 + 1e-9))
             emoji_lines = [
                 " ".join(["💸"] * min(10, money_emoji_count - offset))
                 for offset in range(0, money_emoji_count, 10)
             ]
             profit_headline = (
-                f"📈 <b>${self._escape(symbol)} is up {multiplier:.2f}X</b>"
+                f"📈 <b>${self._escape(symbol)} is up {milestone_label}</b>"
             )
             profit_amount = (
                 f"<b>{self._format_money(entry_mc)} → "
@@ -942,7 +954,19 @@ class PNLTracker:
         }
 
     def _highest_reached(self, pnl: float) -> float:
-        """Return the highest configured milestone reached by this MC PNL."""
+        """Return the highest PNL milestone reached.
+
+        Standard schedule: +50%, +100% (1X profit), +200% (2X), +300% (3X),
+        continuing without a 10X ceiling. Explicit custom milestone lists remain
+        supported for callers that pass ``milestones=...``.
+        """
+        if self._use_standard_milestones:
+            if pnl < 50:
+                return 0.0
+            if pnl < 100:
+                return 50.0
+            return float((int(pnl) // 100) * 100)
+
         reached = 0.0
         for milestone in self.milestones:
             if pnl >= milestone:

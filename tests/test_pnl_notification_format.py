@@ -15,9 +15,15 @@ class CaptureBot:
 
 
 class TestPNLNotificationFormat(unittest.TestCase):
-    def test_default_milestones_include_5x_and_10x(self):
-        self.assertIn(400, PNLTracker.DEFAULT_MILESTONES)
-        self.assertIn(900, PNLTracker.DEFAULT_MILESTONES)
+    def test_default_milestones_start_at_50_percent_and_continue_beyond_10x(self):
+        tracker = object.__new__(PNLTracker)
+        tracker._use_standard_milestones = True
+        self.assertEqual(tracker._highest_reached(49.9), 0)
+        self.assertEqual(tracker._highest_reached(50), 50)
+        self.assertEqual(tracker._highest_reached(100), 100)  # 1X profit
+        self.assertEqual(tracker._highest_reached(200), 200)  # 2X profit
+        self.assertEqual(tracker._highest_reached(1000), 1000)  # 10X profit
+        self.assertEqual(tracker._highest_reached(1700), 1700)  # 17X profit
 
     def test_5_4x_market_cap_sends_formatted_update(self):
         fd, path = tempfile.mkstemp(suffix=".db")
@@ -37,7 +43,7 @@ class TestPNLNotificationFormat(unittest.TestCase):
         asyncio.run(tracker._process_market_cap(row, 147000, 0.0544))
         self.assertEqual(len(bot.messages), 1)
         message = bot.messages[0]["text"]
-        self.assertIn("ALOIS is up 5.44X", message)
+        self.assertIn("ALOIS is up 4X", message)
         self.assertIn("from ⚡", message)
         self.assertIn("<b>$27.0K → $147.0K</b>", message)
         self.assertNotIn("PNL DETAILS", message)
@@ -65,7 +71,7 @@ class TestPNLNotificationFormat(unittest.TestCase):
         asyncio.run(tracker._send_update(row, 10000, 0.01, 0, 0, 0))
         self.assertEqual(bot.messages[-1]["text"].count("💸"), 2)
 
-        # 10.5X means 21 emojis.
+        # A 10.5X total market-cap multiple still gives 21 emojis.
         asyncio.run(tracker._send_update(row, 105000, 0.105, 950, 900, 950))
         self.assertEqual(bot.messages[-1]["text"].count("💸"), 21)
         emoji_lines = [

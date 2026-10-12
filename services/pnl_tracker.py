@@ -628,9 +628,10 @@ class PNLTracker:
             else:
                 milestone_label = f"{pnl / 100.0:.0f}X"
 
-            # Preserve the existing rule: two 💸 per 1X of total multiple.
+            # Emoji count is based on PROFIT multiple, not total position multiple:
+            # +50% profit = 1 emoji, +100% (1X profit) = 2, +150% = 3, etc.
             # Split into rows of at most 10 emojis for a clean Telegram layout.
-            money_emoji_count = max(2, int(total_multiplier * 2 + 1e-9))
+            money_emoji_count = max(0, int((pnl / 100.0) * 2 + 1e-9))
             emoji_lines = [
                 " ".join(["💸"] * min(10, money_emoji_count - offset))
                 for offset in range(0, money_emoji_count, 10)

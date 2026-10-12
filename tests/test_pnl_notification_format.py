@@ -78,18 +78,22 @@ class TestPNLNotificationFormat(unittest.TestCase):
         })
         row = tracker.get_tracked("solana:TokenEmoji")[0]
 
-        # 1X means two emojis.
-        asyncio.run(tracker._send_update(row, 10000, 0.01, 0, 0, 0))
+        # +50% profit means one emoji.
+        asyncio.run(tracker._send_update(row, 15000, 0.015, 50, 50, 50))
+        self.assertEqual(bot.messages[-1]["text"].count("💸"), 1)
+
+        # +100% profit (1X profit) means two emojis.
+        asyncio.run(tracker._send_update(row, 20000, 0.02, 100, 100, 100))
         self.assertEqual(bot.messages[-1]["text"].count("💸"), 2)
 
-        # A 10.5X total market-cap multiple still gives 21 emojis.
+        # +950% profit means 19 emojis, split into rows of at most 10.
         asyncio.run(tracker._send_update(row, 105000, 0.105, 950, 900, 950))
-        self.assertEqual(bot.messages[-1]["text"].count("💸"), 21)
+        self.assertEqual(bot.messages[-1]["text"].count("💸"), 19)
         emoji_lines = [
             line for line in bot.messages[-1]["text"].splitlines()
             if "💸" in line
         ]
-        self.assertEqual([line.count("💸") for line in emoji_lines], [10, 10, 1])
+        self.assertEqual([line.count("💸") for line in emoji_lines], [10, 9])
 
 
     def test_pnl_milestone_sends_token_photo_with_ca_at_bottom(self):

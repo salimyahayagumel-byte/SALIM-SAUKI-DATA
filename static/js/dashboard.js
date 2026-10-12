@@ -2,6 +2,8 @@ const state = {
     signals: [],
     chain: "all",
     search: "",
+    sort: "newest",
+    layout: "table",
     seenSignalKeys: new Set(),
     initialSignalLoad: true
 };
@@ -88,8 +90,27 @@ function filteredSignals() {
         return [token.symbol, token.name, token.address, token.chain].some(value => String(value || "").toLowerCase().includes(query));
     });
 }
+function sortedSignals(signals) {
+    const items = [...signals];
+    const numeric = (token, key) => {
+        const value = Number(token[key] || 0);
+        return Number.isFinite(value) ? value : 0;
+    };
+    const sentAt = token => {
+        const raw = Number(token.sent_at || 0);
+        return raw > 0 ? (raw < 100000000000 ? raw * 1000 : raw) : 0;
+    };
+    const sorters = {
+        newest: (a, b) => sentAt(b) - sentAt(a),
+        final: (a, b) => numeric(b, "final_score") - numeric(a, "final_score"),
+        marketcap: (a, b) => numeric(b, "marketcap") - numeric(a, "marketcap"),
+        volume: (a, b) => numeric(b, "volume24h") - numeric(a, "volume24h"),
+        liquidity: (a, b) => numeric(b, "liquidity") - numeric(a, "liquidity")
+    };
+    return items.sort(sorters[state.sort] || sorters.newest);
+}
 function render() {
-    const signals = filteredSignals();
+    const signals = sortedSignals(filteredSignals());
     const totalVolume = signals.reduce((sum, t) => sum + Number(t.volume24h || 0), 0);
     const topScore = signals.reduce((max, t) => Math.max(max, score(t.final_score)), 0);
     const gemCount = signals.filter(t => String(t.final_status || "").toUpperCase()!== "EARLY GEM").length;
@@ -103,7 +124,45 @@ function render() {
         grid.innerHTML = `<div class="empty-state"><div class="empty-icon">🔎</div><h3>No matching signals</h3><p>The live feed has no signal matching the current filter.</p></div>`;
         return;
     }
-    grid.innerHTML = signals.map(tokenCard).join("");
+    grid.classList.toggle("signal-table-mode", state.layout === "table");
+    grid.classList.toggle("signal-card-mode", state.layout === "cards");
+    grid.innerHTML = state.layout === "table"
+        ? signalTable(signals)
+        : signals.map(tokenCard).join("");
+}
+function signalTable(signals) {
+    const rows = signals.map(token => {
+        const symbol = escapeHtml(token.symbol || "N/A");
+        const name = escapeHtml(token.name || "Unknown Token");
+        const chain = String(token.chain || "unknown").toLowerCase();
+        const address = escapeHtml(String(token.address || ""));
+        const signal = escapeHtml(token.final_signal || token.final_status || "SIGNAL");
+        const logoUrl = safeUrl(token.image_url || "");
+        const logo = logoUrl !== "#"
+            ? `<img src="${escapeHtml(logoUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+            : `<span class="table-logo-fallback">$</span>`;
+        const sentAt = Number(token.sent_at || 0);
+        const date = sentAt ? new Date(sentAt < 100000000000 ? sentAt * 1000 : sentAt) : null;
+        const buy = Math.max(0, Math.min(100, Number(token.buy_ratio || 0) * 100));
+        const finalScore = score(token.final_score);
+        return `<tr class="signal-table-row ${chainClass(chain)}" data-address="${address}" data-chain="${escapeHtml(chain)}" tabindex="0" role="button" aria-label="Open ${symbol} details">
+            <td><div class="table-token"><div class="table-logo">${logo}</div><div class="table-token-copy"><strong>$${symbol}</strong><span>${name}</span><small>${escapeHtml(chainLabel(chain))}${date ? ` · ${escapeHtml(date.toLocaleString())}` : ""}</small></div></div></td>
+            <td><strong>${money(token.marketcap)}</strong></td>
+            <td>${money(token.liquidity)}</td>
+            <td>${money(token.volume24h)}</td>
+            <td>${number(token.total_txns || token.txns1h)}</td>
+            <td><span class="buy-percent">${buy.toFixed(0)}% BUY</span></td>
+            <td><span class="table-score">${score(token.ai_score)}</span></td>
+            <td><span class="table-score gem-score">${score(token.gem_score)}</span></td>
+            <td><span class="table-score security-score">${score(token.security_score)}</span></td>
+            <td><span class="table-score final-score">${finalScore}</span></td>
+            <td><span class="signal-badge ${signalClass(signal)}">${signal}</span></td>
+            <td><button class="table-view-button" type="button" onclick="openDetail('${address}', '${escapeHtml(chain)}'); event.stopPropagation();">VIEW ↗</button></td>
+        </tr>`;
+    }).join("");
+    return `<div class="signal-table-wrap"><table class="signal-table"><thead><tr>
+        <th>TOKEN / CHAIN</th><th>MC</th><th>LIQUIDITY</th><th>VOL 24H</th><th>TXNS</th><th>BUY FLOW</th><th>AI</th><th>GEM</th><th>SECURITY</th><th>FINAL</th><th>SIGNAL</th><th></th>
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function tokenCard(token) {
     const symbol = escapeHtml(token.symbol || "N/A");
@@ -232,13 +291,28 @@ $("#refreshButton").addEventListener("click", loadSignals);
 $("#notificationButton").addEventListener("click", enableNotifications);
 $("#signalGrid").addEventListener("click", event => {
     if (event.target.closest("a, button")) return;
-    const card = event.target.closest(".signal-card");
+    const card = event.target.closest(".signal-card, .signal-table-row");
     if (card) openDetail(card.dataset.address || "", card.dataset.chain || "");
 });
 $("#signalGrid").addEventListener("keydown", event => {
     if (event.key !== "Enter" && event.key !== " ") return;
-    const card = event.target.closest(".signal-card");
+    const card = event.target.closest(".signal-card, .signal-table-row");
     if (card) { event.preventDefault(); openDetail(card.dataset.address || "", card.dataset.chain || ""); }
+});
+$("#signalSort")?.addEventListener("change", event => {
+    state.sort = event.target.value || "newest";
+    render();
+});
+document.querySelectorAll("[data-layout]").forEach(button => {
+    button.addEventListener("click", () => {
+        state.layout = button.dataset.layout === "cards" ? "cards" : "table";
+        document.querySelectorAll("[data-layout]").forEach(item => {
+            const active = item === button;
+            item.classList.toggle("active", active);
+            item.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        render();
+    });
 });
 $("#searchInput").addEventListener("input", event => { state.search = event.target.value.trim(); render(); });
 document.querySelectorAll(".filter").forEach(button => {

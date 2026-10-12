@@ -75,7 +75,22 @@
                 <div class="eyebrow">LIVE SIGNAL FEED</div>
                 <h3>Latest GEM Signals</h3>
             </div>
-            <span id="feedCount">0 signals</span>
+            <div class="feed-controls">
+                <span id="feedCount">0 signals</span>
+                <label class="sort-control" for="signalSort">SORT
+                    <select id="signalSort" aria-label="Sort signals">
+                        <option value="newest">Newest</option>
+                        <option value="final">Final score</option>
+                        <option value="marketcap">Market cap</option>
+                        <option value="volume">24H volume</option>
+                        <option value="liquidity">Liquidity</option>
+                    </select>
+                </label>
+                <div class="view-switch" role="group" aria-label="Signal layout">
+                    <button type="button" class="view-switch-button active" data-layout="table" aria-pressed="true">☷ TABLE</button>
+                    <button type="button" class="view-switch-button" data-layout="cards" aria-pressed="false">▦ CARDS</button>
+                </div>
+            </div>
         </section>
         <section id="signalGrid" class="signal-grid">
             <div class="empty-state">

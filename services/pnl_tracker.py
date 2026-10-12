@@ -664,15 +664,47 @@ class PNLTracker:
                 profit_amount,
             ]
 
+        # Always include the token CA as the final line of the PNL notification.
+        token_address = str(row.get("address") or "").strip()
+        if token_address:
+            message_lines.extend([
+                "",
+                f"📄 CA: <code>{self._escape(token_address)}</code>",
+            ])
         message = "\n".join(message_lines)
 
         try:
-            await self.bot.send_message(
-                chat_id=self.chat_id,
-                text=message,
-                parse_mode="HTML",
-                disable_web_page_preview=True,
-            )
+            image_url = None
+            # Real Telegram bots support send_photo. Test doubles or alternate
+            # bot adapters without it safely keep the text-only path.
+            if callable(getattr(self.bot, "send_photo", None)) and token_address:
+                image_url = await self._get_token_image_url(row)
+
+            if image_url:
+                try:
+                    await self.bot.send_photo(
+                        chat_id=self.chat_id,
+                        photo=image_url,
+                        caption=message,
+                        parse_mode="HTML",
+                    )
+                except Exception as photo_exc:
+                    # Image metadata may be stale or Telegram may reject a URL;
+                    # never lose a PNL milestone just because a logo failed.
+                    print(f"⚠️ PNL token image unavailable for ${symbol}: {photo_exc}")
+                    await self.bot.send_message(
+                        chat_id=self.chat_id,
+                        text=message,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                    )
+            else:
+                await self.bot.send_message(
+                    chat_id=self.chat_id,
+                    text=message,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True,
+                )
 
             if alert_type == "drawdown":
                 print(
@@ -690,6 +722,52 @@ class PNLTracker:
                 f"❌ PNL Telegram error for "
                 f"${symbol}: {exc}"
             )
+
+    async def _get_token_image_url(self, row: Dict[str, Any]) -> Optional[str]:
+        """Look up a token logo through DexScreener without blocking PNL delivery."""
+        address = str(row.get("address") or "").strip()
+        chain = str(row.get("chain") or "").strip().lower()
+        if not address:
+            return None
+
+        try:
+            pairs = await self.dex.search(address)
+        except Exception as exc:
+            print(f"⚠️ Unable to look up token image: {exc}")
+            return None
+
+        if not isinstance(pairs, list):
+            return None
+
+        address_lower = address.lower()
+        # Prefer the matching chain and token side; only accept a real HTTPS image.
+        ranked = []
+        for pair in pairs:
+            if not isinstance(pair, dict):
+                continue
+            pair_chain = str(pair.get("chainId") or "").lower()
+            base = pair.get("baseToken") or {}
+            quote = pair.get("quoteToken") or {}
+            matches_token = (
+                str(base.get("address") or "").lower() == address_lower
+                or str(quote.get("address") or "").lower() == address_lower
+            )
+            if not matches_token:
+                continue
+            info = pair.get("info") or {}
+            image_url = str(
+                info.get("imageUrl")
+                or info.get("header")
+                or info.get("openGraph")
+                or ""
+            ).strip()
+            if not image_url.startswith("https://"):
+                continue
+            ranked.append((pair_chain == chain, image_url))
+
+        for chain_match, image_url in sorted(ranked, key=lambda item: item[0], reverse=True):
+            return image_url
+        return None
 
     def get_tracked(
         self,

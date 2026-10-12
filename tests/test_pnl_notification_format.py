@@ -9,9 +9,13 @@ from services.pnl_tracker import PNLTracker
 class CaptureBot:
     def __init__(self):
         self.messages = []
+        self.photos = []
 
     async def send_message(self, **kwargs):
         self.messages.append(kwargs)
+
+    async def send_photo(self, **kwargs):
+        self.photos.append(kwargs)
 
 
 class TestPNLNotificationFormat(unittest.TestCase):
@@ -31,6 +35,9 @@ class TestPNLNotificationFormat(unittest.TestCase):
         self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
         bot = CaptureBot()
         tracker = PNLTracker(bot=bot, chat_id="-100", database_url=path)
+        async def no_image(_row):
+            return None
+        tracker._get_token_image_url = no_image
         tracker.add_signal({
             "chain": "solana",
             "address": "Token111",
@@ -46,6 +53,7 @@ class TestPNLNotificationFormat(unittest.TestCase):
         self.assertIn("ALOIS is up 4X", message)
         self.assertIn("from ⚡", message)
         self.assertIn("<b>$27.0K → $147.0K</b>", message)
+        self.assertIn("📄 CA: <code>Token111</code>", message)
         self.assertNotIn("PNL DETAILS", message)
         self.assertNotIn("DRAWDOWN ALERT", message)
         self.assertIn("\n", message)  # actual line breaks, not literal slash-n
@@ -57,6 +65,9 @@ class TestPNLNotificationFormat(unittest.TestCase):
         self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
         bot = CaptureBot()
         tracker = PNLTracker(bot=bot, chat_id="-100", database_url=path)
+        async def no_image(_row):
+            return None
+        tracker._get_token_image_url = no_image
         tracker.add_signal({
             "chain": "solana",
             "address": "TokenEmoji",
@@ -81,12 +92,44 @@ class TestPNLNotificationFormat(unittest.TestCase):
         self.assertEqual([line.count("💸") for line in emoji_lines], [10, 10, 1])
 
 
+    def test_pnl_milestone_sends_token_photo_with_ca_at_bottom(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
+        bot = CaptureBot()
+        tracker = PNLTracker(bot=bot, chat_id="-100", database_url=path)
+
+        async def token_image(_row):
+            return "https://example.com/token-logo.png"
+        tracker._get_token_image_url = token_image
+
+        tracker.add_signal({
+            "chain": "solana",
+            "address": "TokenPhotoCA",
+            "symbol": "PHOTO",
+            "price": 0.01,
+            "pair": "PairPhoto",
+            "marketcap": 10000,
+        })
+        row = tracker.get_tracked("solana:TokenPhotoCA")[0]
+        asyncio.run(tracker._send_update(row, 15000, 0.015, 50, 50, 50))
+
+        self.assertEqual(len(bot.photos), 1)
+        self.assertEqual(len(bot.messages), 0)
+        photo = bot.photos[0]
+        self.assertEqual(photo["photo"], "https://example.com/token-logo.png")
+        self.assertIn("PHOTO is up 50%", photo["caption"])
+        self.assertTrue(photo["caption"].endswith("<code>TokenPhotoCA</code>"))
+
     def test_drawdown_does_not_send_telegram_alert(self):
         fd, path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
         self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
         bot = CaptureBot()
         tracker = PNLTracker(bot=bot, chat_id="-100", database_url=path)
+        async def no_image(_row):
+            return None
+        tracker._get_token_image_url = no_image
         tracker.add_signal({
             "chain": "solana",
             "address": "TokenDrawdown",

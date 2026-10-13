@@ -623,7 +623,7 @@ class PNLTracker:
             # Always show the actual MC change as a percentage. The X-profit
             # multiplier can be inferred from this percentage (e.g. +444.44%
             # profit means the current MC is 5.4444x the entry MC).
-            milestone_label = f"{pnl:.2f}".rstrip("0").rstrip(".") + "%"
+            milestone_label = f"{pnl / 100.0:.2f}".rstrip("0").rstrip(".") + "X"
 
             # Emoji count is based on PROFIT multiple, not total position multiple:
             # +50% profit = 1 emoji, +100% (1X profit) = 2, +150% = 3, etc.

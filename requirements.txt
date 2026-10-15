@@ -10,3 +10,5 @@ loguru==0.7.3
 Flask
 
 gunicorn==23.0.0
+
+psycopg[binary]==3.2.10

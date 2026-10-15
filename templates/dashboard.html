@@ -4,18 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#07080d">
-    <title>MASFOX — GEM TERMINAL</title>
+    <title>SALIM SAUKI DATA — AI TERMINAL</title>
     <link rel="icon" type="image/jpeg" href="/static/img/masfox-logo.jpg">
     <link rel="apple-touch-icon" href="/static/img/masfox-logo.jpg">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
 <header class="topbar">
-    <a class="brand" href="/dashboard" aria-label="MASFOX home">
+    <a class="brand" href="/dashboard" aria-label="SALIM SAUKI DATA home">
         <div class="brand-mark"><img src="/static/img/masfox-logo.jpg" alt="MASFOX logo"></div>
         <div>
-            <h1>MASFOX</h1>
-            <span>GEM TERMINAL · MULTI-CHAIN INTELLIGENCE</span>
+            <h1>SALIM SAUKI DATA</h1>
+            <span>AI TERMINAL · MULTI-CHAIN DEX INTELLIGENCE</span>
         </div>
     </a>
     <div class="top-actions">
@@ -48,6 +48,7 @@
     <!-- KANANAN BUTTONS A SAMA - MASFO TABS -->
     <section class="top-tabs" aria-label="Main views">
         <button class="tab-button active" data-view="signals">📡 SIGNALS</button>
+        <button class="tab-button" data-view="terminal">⌘ AI TERMINAL</button>
         <button class="tab-button" data-view="search">🔎 SEARCH TOKEN</button>
         <button class="tab-button" data-view="manual">🖐️ MANUAL SIGNALS</button>
         <button class="tab-button" data-view="pnl">📈 PNL</button>
@@ -98,6 +99,37 @@
                 <h3>Waiting for signals</h3>
                 <p>When the Auto Signal Engine delivers a qualifying signal, it will appear here automatically.</p>
             </div>
+        </section>
+    </div>
+
+    <!-- VIEW: AI TERMINAL -->
+    <div id="view-terminal" class="view-panel">
+        <section class="terminal-workspace">
+            <div class="terminal-intro">
+                <div class="eyebrow">SALIM AI · COMMAND CENTER</div>
+                <h3>Ask your DEX intelligence terminal.</h3>
+                <p>Run safe commands against the live dashboard feed, inspect signals, or open token lookup. Market data is sourced from the connected scanner; AI explanations here are rule-based and do not invent live data.</p>
+                <div class="terminal-chips">
+                    <button type="button" class="terminal-chip" data-command="/help">/help</button>
+                    <button type="button" class="terminal-chip" data-command="/signals">/signals</button>
+                    <button type="button" class="terminal-chip" data-command="/top">/top</button>
+                    <button type="button" class="terminal-chip" data-command="/scan">/scan</button>
+                    <button type="button" class="terminal-chip" data-command="/security">/security</button>
+                </div>
+            </div>
+            <div class="terminal-window">
+                <div class="terminal-window-head"><span><i></i> SALIM AI TERMINAL</span><span id="terminalConnection">DASHBOARD FEED · READY</span></div>
+                <div id="terminalOutput" class="terminal-output" role="log" aria-live="polite">
+                    <div class="terminal-line terminal-system"><span>SYS</span><p>Terminal initialized. Type <b>/help</b> to see available commands.</p></div>
+                    <div class="terminal-line terminal-assistant"><span>AI</span><p>I can summarize loaded signals and explain visible score fields. For contract-specific security, use Search Token so the scanner can fetch current data.</p></div>
+                </div>
+                <form id="terminalForm" class="terminal-input-row">
+                    <label for="terminalInput">COMMAND</label>
+                    <input id="terminalInput" autocomplete="off" spellcheck="false" maxlength="240" placeholder="Ask about signals or type /help…" aria-label="Terminal command">
+                    <button type="submit" class="terminal-run-button">RUN ↗</button>
+                </form>
+            </div>
+            <div class="terminal-footnote"><span class="terminal-pulse"></span> Read-only assistant · no wallet connection · no trade execution</div>
         </section>
     </div>
 
@@ -192,7 +224,7 @@
 </div>
 
 <footer>
-    <span>© 2026 MASFOX</span>
+    <span>© 2026 SALIM SAUKI DATA</span>
     <span>DYOR · NOT FINANCIAL ADVICE</span>
 </footer>
 

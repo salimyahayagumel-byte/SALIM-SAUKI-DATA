@@ -554,3 +554,86 @@ function initTopTabs(){
     if(target) target.click(); else tabs[0]?.classList.add('active');
 }
 initTopTabs();
+
+
+// SALIM AI Terminal: safe command interface over existing dashboard data.
+(function initSalimTerminal(){
+    const form = document.getElementById("terminalForm");
+    const input = document.getElementById("terminalInput");
+    const output = document.getElementById("terminalOutput");
+    if (!form || !input || !output) return;
+    const addLine = (kind, label, message) => {
+        const line = document.createElement("div");
+        line.className = `terminal-line terminal-${kind}`;
+        const tag = document.createElement("span");
+        tag.textContent = label;
+        const body = document.createElement("p");
+        body.textContent = message;
+        line.append(tag, body);
+        output.appendChild(line);
+        output.scrollTop = output.scrollHeight;
+    };
+    const activateView = (view) => document.querySelector(`.tab-button[data-view="${view}"]`)?.click();
+    const getSignals = async () => {
+        const response = await fetch("/api/signals?limit=100&chain=all", {cache:"no-store", headers:{"Accept":"application/json"}});
+        if (!response.ok) throw new Error(`Dashboard API returned HTTP ${response.status}`);
+        const payload = await response.json();
+        return Array.isArray(payload.signals) ? payload.signals : [];
+    };
+    const val = (item, ...keys) => {
+        for (const key of keys) if (item && item[key] !== undefined && item[key] !== null && item[key] !== "") return item[key];
+        return "N/A";
+    };
+    async function runCommand(raw) {
+        const command = String(raw || "").trim();
+        if (!command) return;
+        addLine("user", "YOU", command);
+        input.value = "";
+        const lower = command.toLowerCase();
+        try {
+            if (["/help","help","help me"].includes(lower)) {
+                addLine("assistant","AI","Available commands:\n/help — show commands\n/signals — summarize loaded signal feed\n/top — show highest final-score signals\n/scan — request a scan through the existing scanner API\n/security — explain how to review token security\n/pnl — open the PNL tracker\n/search — open contract-address search\n/status — show dashboard connection status\n\nFor a contract-specific security review, open Search Token and enter the contract address. This terminal does not execute trades.");
+                return;
+            }
+            if (lower === "/pnl" || lower === "pnl") { activateView("pnl"); addLine("assistant","AI","Opened PNL Tracker. PNL is market-cap based and is not a connected wallet balance."); return; }
+            if (lower === "/search" || lower === "search") { activateView("search"); document.getElementById("caSearchInput")?.focus(); addLine("assistant","AI","Search Token is ready. Paste a contract address to request current token data."); return; }
+            if (lower === "/security" || lower.includes("security")) { activateView("search"); addLine("assistant","AI","Security review needs a real contract address and current provider data. Use Search Token for lookup. Never treat a score as a guarantee; missing data should be considered unknown, not safe."); return; }
+            if (lower === "/status" || lower === "status") {
+                const response = await fetch("/api/health", {cache:"no-store"});
+                const payload = await response.json();
+                addLine("assistant","AI",`Dashboard API: ${response.ok ? "reachable" : "unavailable"}\nStatus: ${val(payload,"status")}\nScanner: ${val(payload,"scanner")}\nThis checks dashboard health, not token safety.`);
+                return;
+            }
+            if (lower === "/scan" || lower === "scan") {
+                addLine("system","SYS","Requesting the existing scanner API…");
+                const response = await fetch("/api/scan", {method:"POST", headers:{"Accept":"application/json"}});
+                const payload = await response.json().catch(()=>({}));
+                if (!response.ok) throw new Error(val(payload,"error") || `Scanner returned HTTP ${response.status}`);
+                addLine("assistant","AI",`Scanner request finished.\n${JSON.stringify(payload).slice(0,1800)}\nReview the returned data; a scan result is not a buy recommendation.`);
+                if (typeof loadSignals === "function") await loadSignals();
+                return;
+            }
+            const signals = await getSignals();
+            if (lower === "/signals" || lower === "signals" || lower.includes("summarize")) {
+                const chains = {};
+                signals.forEach(s => { const c=String(val(s,"chain")).toUpperCase(); chains[c]=(chains[c]||0)+1; });
+                addLine("assistant","AI",`Loaded signals: ${signals.length}\nBy chain: ${Object.entries(chains).map(([k,v])=>`${k}: ${v}`).join(", ") || "No signals loaded"}\nThese are saved/delivered signals, not every token on the market.`);
+                return;
+            }
+            if (lower === "/top" || lower === "top") {
+                const sorted = [...signals].sort((a,b)=>Number(val(b,"final_score","finalScore")||0)-Number(val(a,"final_score","finalScore")||0)).slice(0,5);
+                addLine("assistant","AI",sorted.length ? sorted.map((s,i)=>`${i+1}. $${val(s,"symbol","token_symbol")} · Final ${val(s,"final_score","finalScore")} · MC ${val(s,"market_cap","marketCap")} · ${val(s,"chain")}`).join("\n") : "No signals are currently loaded. Wait for the scanner to deliver a qualifying signal.");
+                return;
+            }
+            if (lower.includes("hello") || lower.includes("hi ")) {
+                addLine("assistant","AI","Hello. I can summarize the connected signal feed and open scanner tools. Type /help to see commands.");
+                return;
+            }
+            addLine("assistant","AI","I can only answer from the dashboard's connected data in this version. Try /help, /signals, /top, /scan, /security, /pnl, /search or /status. For a real contract analysis, use Search Token.");
+        } catch (error) {
+            addLine("error","ERR",`Command failed: ${error.message}. Check dashboard/API status and try again.`);
+        }
+    }
+    form.addEventListener("submit", event => { event.preventDefault(); runCommand(input.value); });
+    document.querySelectorAll("[data-command]").forEach(button => button.addEventListener("click", () => runCommand(button.dataset.command)));
+})();

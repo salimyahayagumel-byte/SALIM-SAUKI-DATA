@@ -113,3 +113,37 @@
  .signal-table td{padding:9px 8px;font-size:9px}
  .signal-grid.signal-card-mode{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 }
+
+
+/* SALIM SAUKI DATA AI TERMINAL */
+.brand h1{font-size:clamp(13px,2vw,17px);letter-spacing:.35px}
+.brand span{letter-spacing:1.25px}
+.terminal-workspace{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.35fr);gap:18px;align-items:start}
+.terminal-intro,.terminal-window{background:linear-gradient(145deg,rgba(16,23,33,.97),rgba(8,13,20,.98));border:1px solid rgba(93,232,205,.18);border-radius:18px;box-shadow:0 18px 55px rgba(0,0,0,.22)}
+.terminal-intro{padding:26px;min-height:260px}
+.terminal-intro h3{font-size:clamp(23px,3vw,34px);line-height:1.15;margin:14px 0;color:#f5fbff;letter-spacing:-.8px}
+.terminal-intro p{color:#98a9ba;font-size:13px;line-height:1.8;max-width:540px}
+.terminal-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+.terminal-chip{border:1px solid rgba(75,225,194,.25);background:rgba(38,194,170,.07);color:#79e7d1;border-radius:999px;padding:8px 12px;font:700 11px ui-monospace,monospace;cursor:pointer}
+.terminal-chip:hover{background:rgba(38,194,170,.17);border-color:#55d8bf}
+.terminal-window{overflow:hidden;min-width:0}
+.terminal-window-head{height:48px;padding:0 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,.07);font:700 10px ui-monospace,monospace;color:#b9c8d4;letter-spacing:.8px}
+.terminal-window-head>span:first-child{display:flex;align-items:center;gap:9px}
+.terminal-window-head i,.terminal-pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:#45e0b3;box-shadow:0 0 12px rgba(69,224,179,.7)}
+#terminalConnection{color:#6c8497;font-weight:600;text-align:right}
+.terminal-output{height:350px;overflow:auto;padding:17px 16px;background:linear-gradient(rgba(7,13,19,.65),rgba(7,13,19,.65)),repeating-linear-gradient(0deg,transparent 0 25px,rgba(255,255,255,.015) 26px)}
+.terminal-line{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;margin:0 0 16px;font-size:12px;line-height:1.75}
+.terminal-line>span{font:800 10px ui-monospace,monospace;padding-top:2px;color:#53d9bd}
+.terminal-line p{white-space:pre-wrap;overflow-wrap:anywhere;color:#c3d1dc;margin:0}
+.terminal-line.terminal-user>span{color:#8db8ff}.terminal-line.terminal-user p{color:#f1f6fb}
+.terminal-line.terminal-system>span{color:#f0c76e}.terminal-line.terminal-system p{color:#8ea2b5}
+.terminal-line.terminal-error>span{color:#ff7387}.terminal-line.terminal-error p{color:#ffb0ba}
+.terminal-input-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:12px;border-top:1px solid rgba(255,255,255,.08);background:#0a1119}
+.terminal-input-row label{font:800 9px ui-monospace,monospace;letter-spacing:1px;color:#54d9bd}
+.terminal-input-row input{width:100%;min-width:0;background:#0e1822;border:1px solid rgba(255,255,255,.09);border-radius:9px;padding:12px;color:#eaf5f8;font:12px ui-monospace,monospace;outline:none}
+.terminal-input-row input:focus{border-color:rgba(76,222,190,.65);box-shadow:0 0 0 3px rgba(76,222,190,.08)}
+.terminal-run-button{border:0;border-radius:9px;padding:12px 14px;background:#55dfbe;color:#04120f;font-size:10px;font-weight:900;cursor:pointer}
+.terminal-footnote{grid-column:1/-1;display:flex;align-items:center;gap:8px;color:#72889a;font-size:10px;padding:0 4px}
+.terminal-pulse{width:6px;height:6px}
+@media(max-width:820px){.terminal-workspace{grid-template-columns:1fr}.terminal-intro{min-height:0;padding:21px}.terminal-output{height:320px}.terminal-footnote{grid-column:auto}}
+@media(max-width:480px){.terminal-window-head{padding:0 10px;font-size:9px}.terminal-output{padding:14px 10px;height:300px}.terminal-input-row{grid-template-columns:1fr auto}.terminal-input-row label{display:none}.terminal-input-row input{font-size:11px}.terminal-run-button{padding:12px 10px}.brand-mark{width:39px;height:39px;flex-basis:39px}}

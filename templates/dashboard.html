@@ -4,9 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#07080d">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="application-name" content="SALIM SAUKI DATA">
+    <link rel="manifest" href="/static/manifest.webmanifest">
     <title>SALIM SAUKI DATA — AI TERMINAL</title>
     <link rel="icon" type="image/jpeg" href="/static/img/masfox-logo.jpg">
-    <link rel="apple-touch-icon" href="/static/img/masfox-logo.jpg">
+    <link rel="apple-touch-icon" href="/static/img/app-icon-192.png">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -20,6 +25,7 @@
     </a>
     <div class="top-actions">
         <span class="live-pill"><i></i> LIVE</span>
+        <button id="installAppButton" class="icon-button" type="button" title="Install SALIM SAUKI DATA app" aria-label="Install app" hidden>⬇️</button>
         <button id="notificationButton" class="icon-button notification-button" type="button" title="Enable new-token notifications" aria-label="Enable notifications">🔔</button>
         <button id="refreshButton" class="icon-button" type="button" title="Refresh signals" aria-label="Refresh signals">↻</button>
     </div>
@@ -230,6 +236,6 @@
     <span>DYOR · NOT FINANCIAL ADVICE</span>
 </footer>
 
-<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/dashboard.js" defer></script>
 </body>
 </html>

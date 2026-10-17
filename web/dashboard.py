@@ -293,6 +293,7 @@ def content_type(path):
         ".js": "application/javascript; charset=utf-8",
         ".html": "text/html; charset=utf-8",
         ".json": "application/json; charset=utf-8",
+        ".webmanifest": "application/manifest+json; charset=utf-8",
         ".png": "image/png",
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
@@ -453,6 +454,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        # Root-scope PWA service worker. send_static retains path-traversal checks.
+        if path == "/service-worker.js":
+            self.send_static("/static/sw.js")
+            return
 
         # Dashboard
         if path == "/":

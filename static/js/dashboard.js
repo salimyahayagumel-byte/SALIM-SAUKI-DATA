@@ -645,3 +645,33 @@ initTopTabs();
     form.addEventListener("submit", event => { event.preventDefault(); runCommand(input.value); });
     document.querySelectorAll("[data-command]").forEach(button => button.addEventListener("click", () => runCommand(button.dataset.command)));
 })();
+
+
+// PWA installation support; existing dashboard/API logic remains unchanged.
+(() => {
+    if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+            navigator.serviceWorker.register("/service-worker.js", { scope: "/" })
+                .catch(error => console.warn("PWA service worker registration failed:", error));
+        });
+    }
+    let installPrompt = null;
+    const installButton = document.getElementById("installAppButton");
+    if (!installButton) return;
+    window.addEventListener("beforeinstallprompt", event => {
+        event.preventDefault();
+        installPrompt = event;
+        installButton.hidden = false;
+    });
+    installButton.addEventListener("click", async () => {
+        if (!installPrompt) return;
+        installPrompt.prompt();
+        await installPrompt.userChoice.catch(() => null);
+        installPrompt = null;
+        installButton.hidden = true;
+    });
+    window.addEventListener("appinstalled", () => {
+        installPrompt = null;
+        installButton.hidden = true;
+    });
+})();

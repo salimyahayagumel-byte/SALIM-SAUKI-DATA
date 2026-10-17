@@ -32,6 +32,30 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 from services.dexscreener import DexScreener
 
 
+class _PostgresCompatConnection:
+    """Small SQLite-compatible execute adapter for existing PNL SQL."""
+    def __init__(self, connection):
+        self.connection = connection
+        self.total_changes = 0
+
+    def execute(self, sql, params=()):
+        # Existing queries use SQLite '?' placeholders; psycopg uses '%s'.
+        sql = sql.replace("?", "%s")
+        cursor = self.connection.execute(sql, params)
+        if cursor.rowcount and cursor.rowcount > 0:
+            self.total_changes += cursor.rowcount
+        return cursor
+
+    def commit(self):
+        self.connection.commit()
+
+    def rollback(self):
+        self.connection.rollback()
+
+    def close(self):
+        self.connection.close()
+
+
 class PNLTracker:
 
     DEFAULT_INTERVAL = 60
@@ -54,7 +78,16 @@ class PNLTracker:
     ):
         self.bot = bot
         self.chat_id = str(chat_id or "").strip()
-        self.path = self._resolve_path(database_url)
+        self.database_url = str(database_url or os.getenv("DATABASE_URL", "") or "").strip()
+        self.is_postgres = self.database_url.startswith(("postgres://", "postgresql://"))
+        self._pg = None
+        if self.is_postgres:
+            try:
+                import psycopg
+            except ImportError as exc:
+                raise RuntimeError("PostgreSQL DATABASE_URL is set but psycopg is not installed") from exc
+            self._pg = psycopg
+        self.path = self._resolve_path(self.database_url)
         self.interval = max(15, int(interval or self.DEFAULT_INTERVAL))
         self._use_standard_milestones = milestones is None
         self.milestones = sorted(
@@ -98,22 +131,17 @@ class PNLTracker:
 
         return value
 
-    def _connect(self) -> sqlite3.Connection:
-        """Open one SQLite connection.
-
-        Callers should use _db() so the connection is always closed.
-        """
-        connection = sqlite3.connect(
-            self.path,
-            timeout=10,
-        )
+    def _connect(self):
+        """Open the configured durable store (PostgreSQL on Render, SQLite locally)."""
+        if self.is_postgres:
+            return _PostgresCompatConnection(self._pg.connect(self.database_url, connect_timeout=10))
+        connection = sqlite3.connect(self.path, timeout=10)
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA busy_timeout=10000")
         return connection
 
     @contextmanager
-    def _db(self) -> Iterator[sqlite3.Connection]:
-        """Context manager that commits/rolls back and ALWAYS closes."""
+    def _db(self):
         connection = self._connect()
         try:
             yield connection
@@ -154,12 +182,18 @@ class PNLTracker:
                     """
                 )
 
-                columns = {
-                    row[1]
-                    for row in db.execute(
-                        "PRAGMA table_info(pnl_tracking)"
-                    ).fetchall()
-                }
+                if self.is_postgres:
+                    columns = {
+                        row[0] for row in db.execute(
+                            "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'pnl_tracking'"
+                        ).fetchall()
+                    }
+                else:
+                    columns = {
+                        row[1] for row in db.execute(
+                            "PRAGMA table_info(pnl_tracking)"
+                        ).fetchall()
+                    }
 
                 migrations = {
                     "pair_address": (
@@ -202,6 +236,8 @@ class PNLTracker:
 
                 for column, statement in migrations.items():
                     if column not in columns:
+                        if self.is_postgres:
+                            statement = statement.replace("ADD COLUMN ", "ADD COLUMN IF NOT EXISTS ")
                         db.execute(statement)
 
                 db.execute(

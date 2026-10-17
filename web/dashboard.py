@@ -53,7 +53,22 @@ logger = logging.getLogger("salim-dashboard")
 # =========================================================
 
 scanner = TokenScanner()
-signal_history = SignalHistory()
+signal_history = None
+signal_history_lock = threading.Lock()
+
+def get_signal_history():
+    """Initialize persistent history on first use, not while importing the module.
+
+    This keeps test collection and dashboard imports from opening a network
+    connection to production PostgreSQL. Production still uses DATABASE_URL
+    when an endpoint actually needs signal history.
+    """
+    global signal_history
+    if signal_history is None:
+        with signal_history_lock:
+            if signal_history is None:
+                signal_history = SignalHistory()
+    return signal_history
 
 # Prevent multiple scans from running at the same time.
 scan_lock = threading.Lock()
@@ -453,7 +468,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "status": "online",
                     "bot": "MASFOX",
                     "scanner": "online",
-                    "signal_history": signal_history.count(),
+                    "signal_history": get_signal_history().count(),
                 },
             )
             return
@@ -467,7 +482,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "status": "ready",
                     "bot": "MASFOX",
                     "scanner": "online",
-                    "signal_history": signal_history.count(),
+                    "signal_history": get_signal_history().count(),
                 },
             )
             return
@@ -480,7 +495,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 limit = 100
             chain = str(query.get("chain", ["all"])[0] or "all").lower().strip()
-            signals = signal_history.recent_signals(limit)
+            signals = get_signal_history().recent_signals(limit)
             if chain != "all":
                 signals = [
                     token for token in signals
@@ -503,7 +518,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if len(parts) >= 3:
                 chain = parts[2].lower().strip()
                 address = "/".join(parts[3:]) if len(parts) > 3 else ""
-                signals = signal_history.recent_signals(500)
+                signals = get_signal_history().recent_signals(500)
                 match = next(
                     (token for token in signals
                      if str(token.get("chain", "")).lower().strip() == chain

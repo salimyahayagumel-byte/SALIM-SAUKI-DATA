@@ -63,7 +63,21 @@ from services.dexscreener import DexScreener
 # CLOUD WEB SERVER / HEALTH ENDPOINTS
 # =========================================
 app_web = Flask(__name__)
-signal_history_store = SignalHistory(DATABASE_URL)
+class _LazySignalHistory:
+    """Defer database connections until signal history is actually requested."""
+    def __init__(self, database_url):
+        self.database_url = database_url
+        self._instance = None
+        self._lock = threading.Lock()
+
+    def __getattr__(self, name):
+        if self._instance is None:
+            with self._lock:
+                if self._instance is None:
+                    self._instance = SignalHistory(self.database_url)
+        return getattr(self._instance, name)
+
+signal_history_store = _LazySignalHistory(DATABASE_URL)
 DASHBOARD_BOOT_ID = uuid.uuid4().hex
 
 # Dashboard HTML
@@ -408,8 +422,6 @@ def manual_signal_send():
     global _MANUAL_LAST_SENT_AT
     if not _manual_admin_authorized():
         return jsonify({"success": False, "error": "Admin authorization failed or manual signals are disabled."}), 403
-    if not BOT_TOKEN or not MANUAL_SIGNAL_CHAT_ID:
-        return jsonify({"success": False, "error": "Telegram bot token or AUTO_SIGNAL_CHAT_ID is not configured."}), 503
     payload = request.get_json(silent=True) or {}
     address = str(payload.get("address") or "").strip()
     chain = str(payload.get("chain") or "").strip().lower()
@@ -421,6 +433,8 @@ def manual_signal_send():
         return jsonify({"success": False, "error": "Invalid chain or signal type."}), 400
     if not reason or len(reason) > 500:
         return jsonify({"success": False, "error": "Reason must be between 1 and 500 characters."}), 400
+    if not BOT_TOKEN or not MANUAL_SIGNAL_CHAT_ID:
+        return jsonify({"success": False, "error": "Telegram bot token or AUTO_SIGNAL_CHAT_ID is not configured."}), 503
 
     # Always fetch market data again at send-time; never trust browser-supplied prices.
     async def lookup_pairs():

@@ -62,12 +62,15 @@ class SignalHistory:
                 db.execute("ALTER TABLE signal_history ADD COLUMN IF NOT EXISTS token_json TEXT")
             db.execute("CREATE INDEX IF NOT EXISTS idx_signal_history_sent_at ON signal_history(sent_at)")
 
-    def load_recent(self, max_age_seconds: int) -> Dict[str, float]:
-        cutoff = time.time() - max(0, int(max_age_seconds))
+    def load_recent(self, max_age_seconds: int = 0) -> Dict[str, float]:
+        """Load every previously delivered token key for permanent deduplication.
+
+        max_age_seconds remains accepted for backwards compatibility, but sent
+        token identities must not expire merely because a cooldown elapsed.
+        """
         with self._lock, self._connect() as db:
-            cur = db.execute("SELECT signal_key, sent_at FROM signal_history WHERE sent_at >= %s" if self.is_postgres else "SELECT signal_key, sent_at FROM signal_history WHERE sent_at >= ?", (cutoff,))
-            rows = cur.fetchall()
-        return {str(key): float(sent_at) for key, sent_at in rows}
+            rows = db.execute("SELECT signal_key, sent_at FROM signal_history").fetchall()
+        return {str(key).lower(): float(sent_at) for key, sent_at in rows}
 
     def record(self, signal_key: str, chain: str, address: str, symbol: str = "", score: float = 0, sent_at: Optional[float] = None, token: Optional[Dict] = None) -> None:
         timestamp = float(sent_at or time.time())

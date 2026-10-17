@@ -649,7 +649,17 @@ class AutoSignalEngine:
             )
 
             # -------------------------------------------------
-            # COOLDOWN
+            # PERMANENT DUPLICATE BLOCK
+            # A successfully delivered chain+contract is never sent again.
+            # This persists across cooldown expiry and process restarts.
+            # -------------------------------------------------
+
+            if signal_key.lower() in self.sent_contracts:
+                self.duplicates_skipped += 1
+                continue
+
+            # -------------------------------------------------
+            # COOLDOWN (additional guard for in-memory recent history)
             # -------------------------------------------------
 
             if self._is_on_cooldown(
@@ -1022,7 +1032,7 @@ class AutoSignalEngine:
 
                 return (
                     f"{chain}:{address}"
-                )
+                ).lower()
 
             return address
 
@@ -1756,33 +1766,10 @@ class AutoSignalEngine:
 
         now = time.time()
 
-        expired = []
-
-        for (
-            address,
-            timestamp,
-        ) in list(
-            self.signal_history.items()
-        ):
-
-            if (
-                now - timestamp
-            ) >= self.cooldown:
-
-                expired.append(
-                    address
-                )
-
-        for address in expired:
-
-            self.signal_history.pop(
-                address,
-                None,
-            )
-
-            self.sent_contracts.discard(
-                address
-            )
+        # Do not expire sent identities: the requirement is one delivered
+        # signal per chain+contract, even after cooldown or restart. Keep this
+        # in-memory history as a fast guard; PostgreSQL is the durable source.
+        return
 
     # =========================================================
     # LIMIT HISTORY
@@ -1815,9 +1802,8 @@ class AutoSignalEngine:
             self.signal_history.keys()
         )
 
-        self.history_store.prune(
-            self.MAX_HISTORY
-        )
+        # Keep durable signal_history rows intact. Pruning them would allow
+        # an old token to be sent again after a later restart.
 
     # =========================================================
     # NUMBER

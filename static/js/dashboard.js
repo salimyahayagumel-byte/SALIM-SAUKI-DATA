@@ -595,6 +595,14 @@ initTopTabs();
                 addLine("assistant","AI","Available commands:\n/help — show commands\n/signals — summarize loaded signal feed\n/top — show highest final-score signals\n/scan — request a scan through the existing scanner API\n/security — explain how to review token security\n/pnl — open the PNL tracker\n/search — open contract-address search\n/status — show dashboard connection status\n\nFor a contract-specific security review, open Search Token and enter the contract address. This terminal does not execute trades.");
                 return;
             }
+            if (lower === "/risk" || lower === "risk") { addLine("assistant","AI","Risk checklist:\n• Confirm the chain and contract address.\n• Review liquidity depth and 24h volume, not market cap alone.\n• Check mint/freeze permissions and honeypot/sellability where supported.\n• Treat missing provider data as UNKNOWN, not SAFE.\n• Scores are filters, not guarantees; this terminal does not execute trades."); return; }
+            if (lower === "/history" || lower === "history") {
+                const signals = await getSignals();
+                const seen = new Set();
+                const unique = signals.filter(s => { const key = `${String(val(s,"chain")).toLowerCase()}:${String(val(s,"address","contract_address")).toLowerCase()}`; if (seen.has(key)) return false; seen.add(key); return true; });
+                const recent = unique.slice(0,10).map(s => `${val(s,"symbol","token_symbol")} · ${val(s,"chain")} · ${val(s,"address","contract_address")}`).join("\n");
+                addLine("assistant","AI",`Saved signals visible in dashboard: ${unique.length}\nLatest entries:\n${recent || "No saved signals returned by the dashboard API."}\nThis list reflects the API response limit, not necessarily the entire database.`); return;
+            }
             if (lower === "/pnl" || lower === "pnl") { activateView("pnl"); addLine("assistant","AI","Opened PNL Tracker. PNL is market-cap based and is not a connected wallet balance."); return; }
             if (lower === "/search" || lower === "search") { activateView("search"); document.getElementById("caSearchInput")?.focus(); addLine("assistant","AI","Search Token is ready. Paste a contract address to request current token data."); return; }
             if (lower === "/security" || lower.includes("security")) { activateView("search"); addLine("assistant","AI","Security review needs a real contract address and current provider data. Use Search Token for lookup. Never treat a score as a guarantee; missing data should be considered unknown, not safe."); return; }
@@ -629,7 +637,7 @@ initTopTabs();
                 addLine("assistant","AI","Hello. I can summarize the connected signal feed and open scanner tools. Type /help to see commands.");
                 return;
             }
-            addLine("assistant","AI","I can only answer from the dashboard's connected data in this version. Try /help, /signals, /top, /scan, /security, /pnl, /search or /status. For a real contract analysis, use Search Token.");
+            addLine("assistant","AI","I can only answer from the dashboard's connected data in this version. Try /help, /signals, /top, /scan, /security, /history, /risk, /pnl, /search or /status. For a real contract analysis, use Search Token.");
         } catch (error) {
             addLine("error","ERR",`Command failed: ${error.message}. Check dashboard/API status and try again.`);
         }

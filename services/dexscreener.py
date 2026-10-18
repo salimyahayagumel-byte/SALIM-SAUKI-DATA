@@ -555,27 +555,25 @@ class DexScreener:
         # "new token feed".
         # -----------------------------------------------------
 
-        if chain_id == "base":
+        chain_extra_queries = {
+            "base": [
+                "base", "new base", "base launch", "aerodrome",
+                "degen", "brett", "toshi", "clanker",
+            ],
+            "arc": [
+                "arc", "arc network", "arc mainnet", "arc token",
+                "circle arc", "USDC arc",
+            ],
+            "robinhood": [
+                "robinhood", "robinhood chain", "robinhood mainnet",
+            ],
+        }
 
-            base_extra_queries = [
-                "base",
-                "new base",
-                "base launch",
-                "aerodrome",
-                "degen",
-                "brett",
-                "toshi",
-                "clanker",
-            ]
-
-            for query in base_extra_queries:
-
-                key = query.lower()
-
-                if key not in seen_queries:
-
-                    seen_queries.add(key)
-                    clean_queries.append(query)
+        for query in chain_extra_queries.get(chain_id, []):
+            key = query.lower()
+            if key not in seen_queries:
+                seen_queries.add(key)
+                clean_queries.append(query)
 
         all_pairs = []
         seen_pairs = set()

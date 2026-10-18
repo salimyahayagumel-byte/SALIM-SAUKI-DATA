@@ -221,7 +221,7 @@ class TestPNLTrackerV91(unittest.TestCase):
             {"chain": "robinhood", "symbol": "RH1", "entry_market_cap": 100, "current_market_cap": 50, "highest_pnl": 0},
         ]
         summary = PNLTracker.format_pnl_summary(rows)
-        self.assertIn("Total tokens tracked: 4</b>", summary)
+        self.assertIn("<b>Total tokens tracked: 4</b>", summary)
         self.assertIn("Solana: <b>1</b>", summary)
         self.assertIn("Base: <b>1</b>", summary)
         self.assertIn("ARC: <b>1</b>", summary)

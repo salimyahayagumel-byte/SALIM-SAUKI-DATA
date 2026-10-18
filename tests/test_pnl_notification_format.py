@@ -50,7 +50,7 @@ class TestPNLNotificationFormat(unittest.TestCase):
         asyncio.run(tracker._process_market_cap(row, 147000, 0.0544))
         self.assertEqual(len(bot.messages), 1)
         message = bot.messages[0]["text"]
-        self.assertIn("ALOIS is up 4.44X", message)
+        self.assertIn("$ALOIS is up 5.44X", message)
         self.assertIn("from ⚡", message)
         self.assertIn("<b>$27.0K → $147.0K</b>", message)
         self.assertIn("📄 CA: <code>Token111</code>", message)
@@ -122,7 +122,7 @@ class TestPNLNotificationFormat(unittest.TestCase):
         self.assertEqual(len(bot.messages), 0)
         photo = bot.photos[0]
         self.assertEqual(photo["photo"], "https://example.com/token-logo.png")
-        self.assertIn("PHOTO is up 0.5X", photo["caption"])
+        self.assertIn("$PHOTO is up 1.5X", photo["caption"])
         self.assertTrue(photo["caption"].endswith("<code>TokenPhotoCA</code>"))
 
     def test_drawdown_does_not_send_telegram_alert(self):

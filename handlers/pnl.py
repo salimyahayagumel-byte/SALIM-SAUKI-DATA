@@ -57,6 +57,19 @@ async def pnl(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # Bare /pnl and /pnl summary show the all-chain dashboard summary.
+    # A contract address or chain:address still opens the detailed position.
+    if not argument:
+        rows = tracker.get_tracked(None)
+        if rows:
+            text = tracker.format_pnl_summary(rows)
+            await update.message.reply_text(
+                text,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True,
+            )
+            return
+
     rows = tracker.get_tracked(argument or None)
 
     if argument and not rows:

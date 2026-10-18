@@ -213,5 +213,22 @@ class TestPNLTrackerV91(unittest.TestCase):
         self.assertIn("highest_market_cap", columns)
 
 
+    def test_pnl_summary_shows_chain_counts_and_best_multiple(self):
+        rows = [
+            {"chain": "solana", "symbol": "SOL1", "entry_market_cap": 100, "current_market_cap": 200, "highest_pnl": 100},
+            {"chain": "base", "symbol": "BASE1", "entry_market_cap": 100, "current_market_cap": 600, "highest_pnl": 500},
+            {"chain": "arc", "symbol": "ARC1", "entry_market_cap": 100, "current_market_cap": 100, "highest_pnl": 0},
+            {"chain": "robinhood", "symbol": "RH1", "entry_market_cap": 100, "current_market_cap": 50, "highest_pnl": 0},
+        ]
+        summary = PNLTracker.format_pnl_summary(rows)
+        self.assertIn("Total tokens tracked: 4</b>", summary)
+        self.assertIn("Solana: <b>1</b>", summary)
+        self.assertIn("Base: <b>1</b>", summary)
+        self.assertIn("ARC: <b>1</b>", summary)
+        self.assertIn("Robinhood: <b>1</b>", summary)
+        self.assertIn("Best multiple (tracked): <b>6.00x</b>", summary)
+
+
+
 if __name__ == "__main__":
     unittest.main()

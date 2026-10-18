@@ -1126,12 +1126,34 @@ class PNLTracker:
             reverse=True,
         )
 
+        chain_labels = {
+            "solana": "☀️ Solana",
+            "base": "🔵 Base",
+            "arc": "🟣 ARC",
+            "robinhood": "🟠 Robinhood",
+        }
+        chain_counts = {}
+        for row in rows:
+            chain = str(row.get("chain", "") or "").strip().lower()
+            chain_counts[chain] = chain_counts.get(chain, 0) + 1
+
+        best_multiple = max(
+            (1.0 + PNLTracker._row_pnl(row) / 100.0 for row in rows),
+            default=1.0,
+        )
+
         lines = [
-            "📊 <b>PNL SUMMARY</b>",
+            "🧠 <b>SALIM SAUKI DATA — PNL SUMMARY</b>",
             "━━━━━━━━━━━━━━━━━━━━",
-            f"📦 Tracked: <b>{stats['total']}</b>",
+            f"📦 <b>Total tokens tracked: {stats['total']}</b>",
+            f"☀️ Solana: <b>{chain_counts.get('solana', 0)}</b>",
+            f"🔵 Base: <b>{chain_counts.get('base', 0)}</b>",
+            f"🟣 ARC: <b>{chain_counts.get('arc', 0)}</b>",
+            f"🟠 Robinhood: <b>{chain_counts.get('robinhood', 0)}</b>",
+            "",
             f"🟢 Winners: <b>{stats['winners']}</b>",
             f"🔴 Losers: <b>{stats['losers']}</b>",
+            f"🚀 Best multiple (tracked): <b>{best_multiple:.2f}x</b>",
             "",
             "🏆 <b>TOP GAINERS</b>",
         ]

@@ -9,7 +9,7 @@ import sqlite3
 import time
 import uuid
 from datetime import datetime
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, render_template, redirect, url_for, session, flash
 from telegram import Bot
 
 from telegram.ext import (
@@ -63,6 +63,30 @@ from services.dexscreener import DexScreener
 # CLOUD WEB SERVER / HEALTH ENDPOINTS
 # =========================================
 app_web = Flask(__name__)
+# Website authentication: set a long random SITE_SECRET_KEY in the hosting environment.
+app_web.secret_key = os.getenv("SITE_SECRET_KEY", "")
+app_web.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_SECURE=os.getenv("COOKIE_SECURE", "true").lower() not in {"0", "false", "no"})
+
+# User accounts live in a separate SQLite file by default, independent of bot history.
+_AUTH_DB = os.getenv("SITE_AUTH_DB", os.path.join(os.path.dirname(__file__), "site_users.db"))
+_ADMIN_EMAIL = os.getenv("SITE_ADMIN_EMAIL", "salimyahayagumel@gmail.com").strip().lower()
+
+def _auth_connect():
+    # Resolve the database path at connection time so tests and deployments
+    # can override SITE_AUTH_DB without reusing a path captured at import.
+    db_path = os.getenv("SITE_AUTH_DB") or _AUTH_DB
+    conn = sqlite3.connect(db_path, timeout=15)
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE IF NOT EXISTS site_users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+    conn.commit()
+    return conn
+
+def _auth_admin_configured():
+    return bool(app_web.secret_key and os.getenv("SITE_ADMIN_PASSWORD"))
+
+def _site_admin():
+    return session.get("user_email", "").lower() == _ADMIN_EMAIL and session.get("role") == "admin"
+
 class _LazySignalHistory:
     """Defer database connections until signal history is actually requested."""
     def __init__(self, database_url):
@@ -194,6 +218,86 @@ def get_db_counts():
     except:
         pass
     return cleanup_count, pnl_count
+
+@app_web.route("/register", methods=["GET", "POST"])
+def site_register():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()[:100]
+        email = request.form.get("email", "").strip().lower()[:254]
+        password = request.form.get("password", "")
+        if not name or not email or "@" not in email or len(password) < 10:
+            flash("Cika bayanai daidai; password ya zama aƙalla haruffa 10.", "danger")
+            return render_template("auth.html", mode="register"), 400
+        # Admin email is reserved: only the password configured privately on the server can create its session.
+        if email == _ADMIN_EMAIL:
+            admin_password = os.getenv("SITE_ADMIN_PASSWORD", "")
+            if not admin_password or not hmac.compare_digest(password, admin_password):
+                flash("Ba a iya ƙirƙirar wannan account ta wannan fom ba.", "danger")
+                return render_template("auth.html", mode="register"), 403
+        from werkzeug.security import generate_password_hash
+        try:
+            with _auth_connect() as conn:
+                conn.execute("INSERT INTO site_users(name,email,password_hash) VALUES(?,?,?)", (name, email, generate_password_hash(password)))
+        except sqlite3.IntegrityError:
+            flash("An riga an yi rajista da wannan imel.", "warning")
+            return render_template("auth.html", mode="register"), 409
+        session.clear()
+        session["user_email"] = email
+        session["user_name"] = name
+        session["role"] = "admin" if email == _ADMIN_EMAIL and _auth_admin_configured() else "user"
+        return redirect(url_for("site_admin" if _site_admin() else "site_account"))
+    return render_template("auth.html", mode="register")
+
+@app_web.route("/login", methods=["GET", "POST"])
+def site_login():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()[:254]
+        password = request.form.get("password", "")
+        from werkzeug.security import check_password_hash, generate_password_hash
+        # Admin authentication is checked against a server-side environment secret, never browser storage.
+        if email == _ADMIN_EMAIL and _auth_admin_configured() and hmac.compare_digest(password, os.getenv("SITE_ADMIN_PASSWORD", "")):
+            with _auth_connect() as conn:
+                row = conn.execute("SELECT name FROM site_users WHERE email=?", (email,)).fetchone()
+                if row is None:
+                    conn.execute("INSERT INTO site_users(name,email,password_hash) VALUES(?,?,?)", ("Site Admin", email, generate_password_hash(password)))
+            session.clear()
+            session["user_email"] = email
+            session["user_name"] = "Admin"
+            session["role"] = "admin"
+            return redirect(url_for("site_admin"))
+        with _auth_connect() as conn:
+            row = conn.execute("SELECT * FROM site_users WHERE email=?", (email,)).fetchone()
+        if row and email != _ADMIN_EMAIL and check_password_hash(row["password_hash"], password):
+            session.clear()
+            session["user_email"] = row["email"].lower()
+            session["user_name"] = row["name"]
+            session["role"] = "user"
+            return redirect(url_for("site_account"))
+        flash("Imel ko kalmar sirri ba daidai ba ne.", "danger")
+        return render_template("auth.html", mode="login"), 401
+    return render_template("auth.html", mode="login")
+
+@app_web.route("/logout", methods=["POST"])
+def site_logout():
+    session.clear()
+    return redirect(url_for("site_login"))
+
+@app_web.route("/account")
+def site_account():
+    if not session.get("user_email"):
+        return redirect(url_for("site_login"))
+    if _site_admin():
+        return redirect(url_for("site_admin"))
+    return render_template("account.html", name=session.get("user_name", "User"), email=session["user_email"])
+
+@app_web.route("/admin")
+def site_admin():
+    if not _site_admin():
+        return redirect(url_for("site_login"))
+    with _auth_connect() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM site_users").fetchone()[0]
+        users = conn.execute("SELECT name,email,created_at FROM site_users ORDER BY id DESC LIMIT 100").fetchall()
+    return render_template("admin.html", email=session["user_email"], user_count=count, users=users)
 
 @app_web.route('/')
 def home():

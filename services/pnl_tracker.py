@@ -662,10 +662,18 @@ class PNLTracker:
             # Display TOTAL market-cap multiple (current / entry), not profit-only multiple.
             milestone_label = f"{total_multiplier:.2f}".rstrip("0").rstrip(".") + "X"
 
-            # Emoji count is based on PROFIT multiple, not total position multiple:
-            # +50% profit = 1 emoji, +100% (1X profit) = 2, +150% = 3, etc.
+            # Emoji count follows the displayed TOTAL multiplier:
+            # 1.00X = 2, 1.50X = 3, 1.52X = 3,
+            # 2.00X = 4, 10.50X = 21, 12.47X = 24, 12.50X = 25.
+            # Use the displayed two-decimal multiplier to avoid float drift.
+            from decimal import Decimal, ROUND_HALF_UP
+            displayed_multiple = Decimal(str(total_multiplier)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            money_emoji_count = max(
+                0, int(displayed_multiple * 2)
+            )
             # Split into rows of at most 10 emojis for a clean Telegram layout.
-            money_emoji_count = max(0, int((pnl / 100.0) * 2 + 1e-9))
             emoji_lines = [
                 " ".join(["💸"] * min(10, money_emoji_count - offset))
                 for offset in range(0, money_emoji_count, 10)

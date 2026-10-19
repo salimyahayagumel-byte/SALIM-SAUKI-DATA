@@ -78,22 +78,28 @@ class TestPNLNotificationFormat(unittest.TestCase):
         })
         row = tracker.get_tracked("solana:TokenEmoji")[0]
 
-        # +50% profit means one emoji.
+        # 1.50X total multiplier => 3 emojis.
         asyncio.run(tracker._send_update(row, 15000, 0.015, 50, 50, 50))
-        self.assertEqual(bot.messages[-1]["text"].count("💸"), 1)
+        self.assertEqual(bot.messages[-1]["text"].count("💸"), 3)
 
-        # +100% profit (1X profit) means two emojis.
+        # 2.00X total multiplier => 4 emojis.
         asyncio.run(tracker._send_update(row, 20000, 0.02, 100, 100, 100))
-        self.assertEqual(bot.messages[-1]["text"].count("💸"), 2)
+        self.assertEqual(bot.messages[-1]["text"].count("💸"), 4)
 
-        # +950% profit means 19 emojis, split into rows of at most 10.
+        # 10.50X total multiplier => 21 emojis, split into rows of at most 10.
         asyncio.run(tracker._send_update(row, 105000, 0.105, 950, 900, 950))
-        self.assertEqual(bot.messages[-1]["text"].count("💸"), 19)
+        self.assertEqual(bot.messages[-1]["text"].count("💸"), 21)
         emoji_lines = [
             line for line in bot.messages[-1]["text"].splitlines()
             if "💸" in line
         ]
-        self.assertEqual([line.count("💸") for line in emoji_lines], [10, 9])
+        self.assertEqual([line.count("💸") for line in emoji_lines], [10, 10, 1])
+
+        # 12.47X => 24 emojis; 12.50X => 25 emojis.
+        asyncio.run(tracker._send_update(row, 124700, 0.1247, 1147, 1140, 1147))
+        self.assertEqual(bot.messages[-1]["text"].count("💸"), 24)
+        asyncio.run(tracker._send_update(row, 125000, 0.125, 1150, 1140, 1150))
+        self.assertEqual(bot.messages[-1]["text"].count("💸"), 25)
 
 
     def test_pnl_milestone_sends_token_photo_with_ca_at_bottom(self):

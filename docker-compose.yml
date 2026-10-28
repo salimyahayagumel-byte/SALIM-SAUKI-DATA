@@ -9,7 +9,6 @@ services:
       PORT: "10000"
       DASHBOARD_HOST: "0.0.0.0"
       DATABASE_URL: "sqlite:///./data/salim_sauki_data.db"
-      CLEANUP_DATABASE_PATH: "./data/cleanup_messages.db"
     ports:
       - "10000:10000"
     volumes:

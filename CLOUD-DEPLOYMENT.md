@@ -35,7 +35,6 @@ Set `PORT` to the port supplied by the cloud provider. The application listens o
 SQLite is supported when the platform provides a persistent disk/volume. The important files are:
 
 - `salim_sauki_data.db`
-- `cleanup_messages.db`
 
 For multi-instance/high-availability deployments, use a managed PostgreSQL database and adapt the persistence layer before running multiple application replicas. Do not run multiple SQLite replicas against the same file.
 

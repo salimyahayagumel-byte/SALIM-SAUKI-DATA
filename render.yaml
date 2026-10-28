@@ -11,8 +11,6 @@ services:
         value: production
       - key: TELEGRAM_POLLING_ENABLED
         value: "false"
-      - key: CLEANUP_POLLING_ENABLED
-        value: "false"
 
   - type: worker
     name: salim-sauki-data-worker
@@ -25,5 +23,3 @@ services:
         value: production
       - key: TELEGRAM_POLLING_ENABLED
         value: "true"
-      - key: CLEANUP_POLLING_ENABLED
-        value: "false"

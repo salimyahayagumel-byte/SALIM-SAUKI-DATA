@@ -3,4 +3,3 @@ __pycache__/
 services/__pycache__/
 *.db
 *.log
-cleanup_messages.db

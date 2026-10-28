@@ -23,11 +23,6 @@ from telegram.request import HTTPXRequest
 from config import (
     BOT_TOKEN,
     BOT_USERNAME,
-    CLEANUP_BOT_TOKEN,
-    CLEANUP_CHAT_ID,
-    CLEANUP_DELETE_AFTER_SECONDS,
-    CLEANUP_CHECK_INTERVAL,
-    CLEANUP_DATABASE_PATH,
     AUTO_SIGNAL_CHAT_ID,
     AUTO_SIGNAL_ENABLED,
     AUTO_SIGNAL_INTERVAL,
@@ -51,10 +46,6 @@ from handlers.autostatus import autostatus
 from services.auto_signal import AutoSignalEngine
 from services.dashboard_report import report_if_due, restore_report
 from services.history import SignalHistory
-from services.group_cleanup import (
-    GroupCleanupService,
-    add_cleanup_handler,
-)
 
 from web.dashboard import load_dashboard, perform_scan
 from services.dexscreener import DexScreener
@@ -163,13 +154,6 @@ DASHBOARD_HTML = """
             <div class="stat"><span>Tracked Tokens</span><span class="val">__PNL_COUNT__</span></div>
         </div>
 
-        <div class="card">
-            <h3>🧹 CLEANUP SERVICE</h3>
-            <div class="stat"><span>Status</span><span class="val">__CLEANUP_STATUS__</span></div>
-            <div class="stat"><span>Delete After</span><span class="val">__CLEANUP_AFTER__s</span></div>
-            <div class="stat"><span>Messages in DB</span><span class="val">__CLEANUP_COUNT__</span></div>
-            <div class="stat"><span>Database</span><span class="val" style="font-size:10px">cleanup_messages.db</span></div>
-        </div>
     </div>
 
     <div class="card" style="text-align:center">
@@ -191,17 +175,7 @@ DASHBOARD_HTML = """
 """
 
 def get_db_counts():
-    cleanup_count = 0
     pnl_count = 0
-    try:
-        if os.path.exists("./cleanup_messages.db"):
-            conn = sqlite3.connect("./cleanup_messages.db")
-            cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM messages")
-            cleanup_count = cur.fetchone()[0]
-            conn.close()
-    except:
-        pass
     try:
         if os.path.exists("./salim_sauki_data.db"):
             conn = sqlite3.connect("./salim_sauki_data.db")
@@ -217,7 +191,7 @@ def get_db_counts():
             conn.close()
     except:
         pass
-    return cleanup_count, pnl_count
+    return pnl_count
 
 @app_web.route("/register", methods=["GET", "POST"])
 def site_register():
@@ -307,7 +281,7 @@ def home():
 
 @app_web.route('/status')
 def status_page():
-    cleanup_count, pnl_count = get_db_counts()
+    pnl_count = get_db_counts()
     html = DASHBOARD_HTML
     html = html.replace("__TIME__", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     html = html.replace("__AUTO_ENABLED__", "✅ YES" if AUTO_SIGNAL_ENABLED else "❌ NO")
@@ -321,9 +295,6 @@ def status_page():
     html = html.replace("__PNL_INTERVAL__", str(PNL_TRACKER_INTERVAL))
     html = html.replace("__PNL_MAX__", str(PNL_TRACKER_MAX_TRACKED))
     html = html.replace("__PNL_COUNT__", str(pnl_count))
-    html = html.replace("__CLEANUP_STATUS__", "✅ ACTIVE" if CLEANUP_BOT_TOKEN and CLEANUP_CHAT_ID else "⚠️ DISABLED")
-    html = html.replace("__CLEANUP_AFTER__", str(CLEANUP_DELETE_AFTER_SECONDS))
-    html = html.replace("__CLEANUP_COUNT__", str(cleanup_count))
     return html
 
 @app_web.route("/dashboard")
@@ -614,7 +585,7 @@ def health_check():
 
 @app_web.route('/api/status')
 def api_status():
-    cleanup_count, pnl_count = get_db_counts()
+    pnl_count = get_db_counts()
     return jsonify({
         "bot": "MASFOX",
         "status": "LIVE",
@@ -628,16 +599,11 @@ def api_status():
             "enabled": PNL_TRACKER_ENABLED,
             "tracked_tokens": pnl_count,
         },
-        "cleanup": {
-            "enabled": bool(CLEANUP_BOT_TOKEN and CLEANUP_CHAT_ID),
-            "messages_in_db": cleanup_count,
-        },
         "uptime_robot": "KEEPING ALIVE"
     })
 
 
 TELEGRAM_POLLING_ENABLED = os.getenv("TELEGRAM_POLLING_ENABLED", "true").strip().lower() in {"1","true","yes","on"}
-CLEANUP_POLLING_ENABLED = os.getenv("CLEANUP_POLLING_ENABLED", "false").strip().lower() in {"1","true","yes","on"}
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
 
 def run_web():
@@ -658,9 +624,6 @@ logger = logging.getLogger(__name__)
 
 auto_signal_engine = None
 auto_signal_task = None
-cleanup_app = None
-cleanup_service = None
-cleanup_uses_main_app = False
 
 # Public dashboard scan endpoint protection.
 _dashboard_scan_lock = threading.Lock()
@@ -722,7 +685,7 @@ async def dashboard_report_loop(bot, chat_id):
 
 
 async def run_bot():
-    global auto_signal_task, auto_signal_engine, cleanup_app, cleanup_service, cleanup_uses_main_app
+    global auto_signal_task, auto_signal_engine
     dashboard_report_task = None
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN baya cikin.env")
@@ -754,32 +717,6 @@ async def run_bot():
     else:
         print("ℹ️ Telegram polling disabled; this process is web-only.")
     print("📡 Waiting for Telegram messages...")
-    if CLEANUP_BOT_TOKEN and CLEANUP_CHAT_ID:
-        print("🧹 Starting Group Cleanup...")
-        if CLEANUP_BOT_TOKEN == BOT_TOKEN:
-            cleanup_uses_main_app = True
-            cleanup_service = GroupCleanupService(bot=app.bot, chat_id=CLEANUP_CHAT_ID, delete_after_seconds=CLEANUP_DELETE_AFTER_SECONDS, check_interval_seconds=CLEANUP_CHECK_INTERVAL, database_path=CLEANUP_DATABASE_PATH)
-            add_cleanup_handler(app, cleanup_service)
-            await cleanup_service.diagnose()
-            await cleanup_service.start()
-        elif CLEANUP_POLLING_ENABLED:
-            cleanup_request = HTTPXRequest(connect_timeout=30.0, read_timeout=60.0, write_timeout=60.0, pool_timeout=30.0, http_version="1.1", httpx_kwargs=telegram_httpx_kwargs)
-            cleanup_get_updates_request = HTTPXRequest(connect_timeout=30.0, read_timeout=60.0, write_timeout=60.0, pool_timeout=30.0, http_version="1.1", httpx_kwargs=telegram_httpx_kwargs)
-            cleanup_app = Application.builder().token(CLEANUP_BOT_TOKEN).request(cleanup_request).get_updates_request(cleanup_get_updates_request).build()
-            cleanup_service = GroupCleanupService(bot=cleanup_app.bot, chat_id=CLEANUP_CHAT_ID, delete_after_seconds=CLEANUP_DELETE_AFTER_SECONDS, check_interval_seconds=CLEANUP_CHECK_INTERVAL, database_path=CLEANUP_DATABASE_PATH)
-            add_cleanup_handler(cleanup_app, cleanup_service)
-            cleanup_app.add_error_handler(error_handler)
-            await cleanup_app.initialize()
-            await cleanup_app.start()
-            if cleanup_app.updater:
-                await cleanup_app.updater.start_polling(drop_pending_updates=True)
-            await cleanup_service.start()
-        else:
-            print("⚠️ Separate cleanup polling disabled; use same BOT_TOKEN for single-instance cleanup.")
-        if cleanup_service:
-            print("🧹 Cleanup Bot is ACTIVE")
-    else:
-        print("⚠️ Group Cleanup Bot disabled.")
     if AUTO_SIGNAL_CHAT_ID:
         dashboard_report_task = asyncio.create_task(dashboard_report_loop(app.bot, AUTO_SIGNAL_CHAT_ID))
         print("📊 24-hour Telegram report scheduler started.")
@@ -811,14 +748,6 @@ async def run_bot():
                 await auto_signal_task
             except:
                 pass
-        if cleanup_service:
-            await cleanup_service.stop()
-        if cleanup_app and not cleanup_uses_main_app:
-            if cleanup_app.updater and cleanup_app.updater.running:
-                await cleanup_app.updater.stop()
-            if cleanup_app.running:
-                await cleanup_app.stop()
-            await cleanup_app.shutdown()
         if app.updater and app.updater.running:
             await app.updater.stop()
         if app.running:

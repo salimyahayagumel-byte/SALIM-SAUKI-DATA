@@ -154,19 +154,6 @@ BASE_HONEYPOT_ENABLED=true
 BASE_HONEYPOT_REQUIRED=true
 ```
 
-## Group auto-cleanup
-
-The cleanup service can delete configured group messages after the configured delay. Example settings:
-
-```env
-CLEANUP_BOT_TOKEN=YOUR_CLEANUP_BOT_TOKEN
-CLEANUP_CHAT_ID=YOUR_TELEGRAM_GROUP_CHAT_ID
-CLEANUP_DELETE_AFTER_SECONDS=300
-CLEANUP_CHECK_INTERVAL=15
-CLEANUP_DATABASE_PATH=./cleanup_messages.db
-```
-
-If the cleanup token equals the main bot token, cleanup is attached to the main Telegram application instead of starting a second polling process. This avoids Telegram `409 Conflict` caused by two `getUpdates` consumers using the same bot token.
 
 ## Project structure
 

@@ -766,39 +766,6 @@ CHANNEL_USERNAME = os.getenv(
 ).strip()
 
 
-# =========================================================
-# GROUP AUTO-CLEANUP
-# =========================================================
-
-# Optional separate cleanup bot.
-CLEANUP_BOT_TOKEN = os.getenv(
-    "CLEANUP_BOT_TOKEN",
-    "",
-).strip()
-
-CLEANUP_CHAT_ID = os.getenv(
-    "CLEANUP_CHAT_ID",
-    "",
-).strip()
-
-CLEANUP_DELETE_AFTER_SECONDS = _env_int(
-    "CLEANUP_DELETE_AFTER_SECONDS",
-    300,
-)
-
-CLEANUP_CHECK_INTERVAL = _env_int(
-    "CLEANUP_CHECK_INTERVAL",
-    15,
-)
-
-CLEANUP_DATABASE_PATH = (
-    os.getenv(
-        "CLEANUP_DATABASE_PATH",
-        "./cleanup_messages.db",
-    ).strip()
-    or "./cleanup_messages.db"
-)
-
 
 # =========================================================
 # DEPLOYMENT / POLLING
@@ -818,10 +785,6 @@ TELEGRAM_POLLING_ENABLED = _env_bool(
     True,
 )
 
-CLEANUP_POLLING_ENABLED = _env_bool(
-    "CLEANUP_POLLING_ENABLED",
-    False,
-)
 
 
 # =========================================================
@@ -887,5 +850,4 @@ def configuration_summary():
             AUTO_SIGNAL_CHAT_ID
         ),
         "telegram_polling_enabled": TELEGRAM_POLLING_ENABLED,
-        "cleanup_polling_enabled": CLEANUP_POLLING_ENABLED,
     }
